@@ -22,6 +22,7 @@
 
             React.useEffect(() => {
                 const load = async () => {
+                    // Gọi song song các API để lấy số liệu thống kê
                     const [t, c, s, a] = await Promise.all([
                         window.api.call("/teachers/"),
                         window.api.call("/classes/"),
@@ -38,25 +39,76 @@
                 load();
             }, []);
 
-            const Card = ({ title, val, color }) => (
-                <div className={`p-6 rounded-xl bg-white shadow-sm border-l-4 ${color}`}>
-                    <h3 className="text-gray-500 text-sm font-bold uppercase">{title}</h3>
-                    <p className="text-4xl font-bold text-gray-800 mt-2">{val}</p>
+            const Card = ({ title, val, color, icon }) => (
+                <div className={`p-6 rounded-xl bg-white shadow-sm border-l-4 ${color} transform transition hover:scale-105`}>
+                    <div className="flex justify-between items-center">
+                        <div>
+                            <h3 className="text-gray-500 text-xs font-bold uppercase tracking-wider">{title}</h3>
+                            <p className="text-4xl font-bold text-gray-800 mt-2">{val}</p>
+                        </div>
+                        <div className="text-4xl opacity-20">{icon}</div>
+                    </div>
                 </div>
             );
 
             return (
                 <window.AppLayout>
-                    <div className="mb-8">
-                        <h1 className="text-3xl font-bold text-gray-900">Tổng quan hệ thống</h1>
-                        <p className="text-gray-500">Dữ liệu hiện tại trên hệ thống.</p>
+                    <div className="mb-8 flex justify-between items-end">
+                        <div>
+                            <h1 className="text-3xl font-bold text-gray-900">Tổng quan hệ thống</h1>
+                            <p className="text-gray-500 mt-1">Xin chào Quản trị viên, dưới đây là tình hình dữ liệu hiện tại.</p>
+                        </div>
+                        <div className="text-sm text-gray-400">
+                            Hôm nay: {new Date().toLocaleDateString('vi-VN')}
+                        </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                        <Card title="Giáo viên" val={stats.t} color="border-blue-500" />
-                        <Card title="Lớp học" val={stats.c} color="border-green-500" />
-                        <Card title="Môn học" val={stats.s} color="border-purple-500" />
-                        <Card title="Phân công" val={stats.a} color="border-orange-500" />
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                        <Card title="Giáo viên" val={stats.t} color="border-blue-500" icon="👨‍🏫" />
+                        <Card title="Lớp học" val={stats.c} color="border-green-500" icon="🏫" />
+                        <Card title="Môn học" val={stats.s} color="border-purple-500" icon="📚" />
+                        <Card title="Phân công" val={stats.a} color="border-orange-500" icon="📅" />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="bg-white p-6 rounded-xl shadow-sm border">
+                            <h3 className="font-bold text-lg mb-4 text-blue-800">🚀 Bắt đầu nhanh</h3>
+                            <ul className="space-y-3">
+                                <li className="flex items-center gap-3 text-gray-700">
+                                    <span className="bg-blue-100 text-blue-800 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold">1</span>
+                                    <span>Nhập danh sách <b>Giáo viên</b> và <b>Lớp học</b>.</span>
+                                </li>
+                                <li className="flex items-center gap-3 text-gray-700">
+                                    <span className="bg-blue-100 text-blue-800 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold">2</span>
+                                    <span>Khai báo <b>Môn học</b> trong chương trình.</span>
+                                </li>
+                                <li className="flex items-center gap-3 text-gray-700">
+                                    <span className="bg-blue-100 text-blue-800 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold">3</span>
+                                    <span>Thực hiện <b>Phân công chuyên môn</b> (Ai dạy lớp nào).</span>
+                                </li>
+                                <li className="flex items-center gap-3 text-gray-700">
+                                    <span className="bg-blue-100 text-blue-800 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold">4</span>
+                                    <span>Vào mục <b>Xếp TKB</b> để chạy thuật toán tự động.</span>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div className="bg-blue-50 p-6 rounded-xl border border-blue-100">
+                            <h3 className="font-bold text-lg mb-4 text-blue-800">ℹ️ Trạng thái hệ thống</h3>
+                            <div className="space-y-2 text-sm">
+                                <div className="flex justify-between">
+                                    <span className="text-gray-600">Backend URL:</span>
+                                    <span className="font-mono text-blue-600 truncate max-w-[200px]">{window.api.getUrl()}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-gray-600">Trạng thái API:</span>
+                                    <span className="text-green-600 font-bold">● Đang hoạt động</span>
+                                </div>
+                                <div className="mt-4 pt-4 border-t border-blue-200 text-xs text-gray-500">
+                                    Phiên bản frontend: <b>v1.2 (Multi-page)</b>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </window.AppLayout>
             );
