@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>In TKB - SmartTKB</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script type="text/babel" src="js/common.js"></script>
+    <style>
+        @media print {
+            aside, button, select, .no-print { display: none !important; }
+            main { margin-left: 0 !important; padding: 0 !important; }
+            body { background: white; }
+            .page-break { page-break-before: always; }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        function PrintPage() {
+            const [classes, setClasses] = React.useState([]);
+            const [results, setResults] = React.useState([]);
+            const [selectedClass, setSelectedClass] = React.useState("");
+            
+            // Lấy task_id gần nhất đã hoàn thành để in
+            const loadLastResult = async () => {
+                // Logic đơn giản: Lấy kết quả của lần chạy cuối cùng
+                // Thực tế cần API lấy "latest task", ở đây tạm thời lấy tất cả results của task mới nhất
+                // (Giả lập: Bạn cần nhập Task ID hoặc chọn từ list)
+                const c = await window.api.call("/classes/");
+                setClasses(c || []);
+            };
+            React.useEffect(() => { loadLastResult(); }, []);
+
+            // Vì API hiện tại yêu cầu TaskID, ta làm ô nhập TaskID tạm thời
+            const [tid, setTid] = React.useState(""); 
+            const fetchTKB = async () => {
+                if(!tid) return alert("Cần nhập Mã Task ID từ trang Xếp TKB");
+                const res = await window.api.call(`/generate/results/${tid}`);
+                setResults(res || []);
+            };
+
+            const TKBTable = ({ classId, className }) => {
+                const schedule = results.filter(r => r.class_id === classId);
+                if(schedule.length === 0) return null;
+
+                return (
+                    <div className="mb-8 p-4 border rounded print:border-2 print:border-black">
+                        <h2 className="text-xl font-bold text-center mb-4 uppercase">Thời Khóa Biểu Lớp {className}</h2>
+                        <table className="w-full text-center border-collapse border border-black">
+                            <thead>
+                                <tr>
+                                    <th className="border border-black p-2 bg-gray-100 print:bg-white">Tiết</th>
+                                    {["Hai","Ba","Tư","Năm","Sáu"].map(d=><th key={d} className="border border-black p-2 font-bold">Thứ {d}</th>)}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {[0,1,2,3,4,5,6,7,8].map(p => (
+                                    <tr key={p}>
+                                        <td className="border border-black p-2 font-bold">{p+1}</td>
+                                        {[0,1,2,3,4].map(d => {
+                                            const slot = schedule.find(r => r.day === d && r.period === p);
+                                            return (
+                                                <td key={d} className="border border-black p-2 h-12 align-middle">
+                                                    {slot ? (
+                                                        <div>
+                                                            <div className="font-bold">{slot.subjects?.name}</div>
+                                                            <div className="text-xs italic">{slot.teachers?.short_name}</div>
+                                                        </div>
+                                                    ) : ""}
+                                                </td>
+                                            );
+                                        })}
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                );
+            };
+
+            return (
+                <window.AppLayout>
+                    <div className="no-print mb-6 flex gap-4 items-end bg-white p-4 rounded shadow">
+                        <div className="flex-1">
+                            <label className="text-sm font-bold block">Nhập Task ID (Lấy từ trang Xếp TKB)</label>
+                            <input value={tid} onChange={e=>setTid(e.target.value)} className="border p-2 w-full rounded" placeholder="Ví dụ: b4f8..."/>
+                        </div>
+                        <button onClick={fetchTKB} className="bg-blue-600 text-white px-4 py-2 rounded font-bold">Tải Dữ Liệu</button>
+                        <button onClick={()=>window.print()} className="bg-gray-800 text-white px-4 py-2 rounded font-bold">🖨️ In Ngay</button>
+                    </div>
+
+                    {/* Chế độ in tất cả hoặc in 1 lớp */}
+                    <div className="no-print mb-4">
+                        <select onChange={e=>setSelectedClass(e.target.value)} className="border p-2 rounded">
+                            <option value="">-- In Tất Cả Các Lớp --</option>
+                            {classes.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                    </div>
+
+                    <div id="print-area">
+                        {selectedClass ? (
+                            <TKBTable classId={selectedClass} className={classes.find(c=>c.id===selectedClass)?.name} />
+                        ) : (
+                            classes.map(c => (
+                                <div key={c.id} className="page-break">
+                                    <TKBTable classId={c.id} className={c.name} />
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </window.AppLayout>
+            );
+        }
+        ReactDOM.createRoot(document.getElementById('root')).render(<PrintPage />);
+    </script>
+</body>
+</html>
