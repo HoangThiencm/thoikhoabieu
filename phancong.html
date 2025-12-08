@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Phân Công - SmartTKB</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script type="text/babel" src="js/common.js"></script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        function AssignmentsPage() {
+            const [assignments, setAssignments] = React.useState([]);
+            const [teachers, setTeachers] = React.useState([]);
+            const [classes, setClasses] = React.useState([]);
+            const [subjects, setSubjects] = React.useState([]);
+            
+            // Form state
+            const [cid, setCid] = React.useState("");
+            const [sid, setSid] = React.useState("");
+            const [tid, setTid] = React.useState("");
+            const [num, setNum] = React.useState(2);
+
+            const loadAll = async () => {
+                const [a, t, c, s] = await Promise.all([
+                    window.api.call("/assignments/"),
+                    window.api.call("/teachers/"),
+                    window.api.call("/classes/"),
+                    window.api.call("/subjects/")
+                ]);
+                setAssignments(a || []);
+                setTeachers(t || []);
+                setClasses(c || []);
+                setSubjects(s || []);
+            };
+            React.useEffect(() => { loadAll(); }, []);
+
+            const add = async () => {
+                if(!cid || !sid || !tid) return alert("Chọn đủ thông tin!");
+                await window.api.call("/assignments/", "POST", {
+                    class_id: cid, subject_id: sid, teacher_id: tid, periods_per_week: parseInt(num)
+                });
+                loadAll();
+            };
+
+            const del = async (id) => {
+                if(confirm("Xóa phân công này?")) {
+                    await window.api.call(`/assignments/${id}`, "DELETE");
+                    loadAll();
+                }
+            };
+
+            return (
+                <window.AppLayout>
+                    <h1 className="text-2xl font-bold mb-6">Phân công Chuyên môn</h1>
+
+                    <div className="bg-white p-6 rounded-xl shadow-sm mb-6 grid grid-cols-1 md:grid-cols-5 gap-4 items-end border">
+                        <div>
+                            <label className="text-sm font-bold block mb-1">Lớp</label>
+                            <select value={cid} onChange={e=>setCid(e.target.value)} className="border p-2 rounded w-full">
+                                <option value="">-- Chọn --</option>
+                                {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="text-sm font-bold block mb-1">Môn</label>
+                            <select value={sid} onChange={e=>setSid(e.target.value)} className="border p-2 rounded w-full">
+                                <option value="">-- Chọn --</option>
+                                {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="text-sm font-bold block mb-1">Giáo viên</label>
+                            <select value={tid} onChange={e=>setTid(e.target.value)} className="border p-2 rounded w-full">
+                                <option value="">-- Chọn --</option>
+                                {teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="text-sm font-bold block mb-1">Số tiết/tuần</label>
+                            <input type="number" value={num} onChange={e=>setNum(e.target.value)} className="border p-2 rounded w-full"/>
+                        </div>
+                        <button onClick={add} className="bg-orange-600 text-white font-bold py-2 rounded hover:bg-orange-700">Lưu</button>
+                    </div>
+
+                    <div className="bg-white rounded-lg shadow border overflow-hidden">
+                        <table className="w-full text-left">
+                            <thead className="bg-gray-50 border-b">
+                                <tr>
+                                    <th className="p-4 font-bold">Lớp</th>
+                                    <th className="p-4 font-bold">Môn</th>
+                                    <th className="p-4 font-bold">Giáo viên</th>
+                                    <th className="p-4 font-bold">Tiết/Tuần</th>
+                                    <th className="p-4"></th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y">
+                                {assignments.map(a => (
+                                    <tr key={a.id} className="hover:bg-gray-50">
+                                        <td className="p-4 font-bold text-gray-800">{a.classes?.name}</td>
+                                        <td className="p-4">{a.subjects?.name}</td>
+                                        <td className="p-4 text-blue-600 font-medium">{a.teachers?.name}</td>
+                                        <td className="p-4 font-mono">{a.periods_per_week}</td>
+                                        <td className="p-4 text-right">
+                                            <button onClick={()=>del(a.id)} className="text-red-500 hover:text-red-700">❌</button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </window.AppLayout>
+            );
+        }
+        ReactDOM.createRoot(document.getElementById('root')).render(<AssignmentsPage />);
+    </script>
+</body>
+</html>
