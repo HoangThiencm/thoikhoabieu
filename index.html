@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hệ Thống Xếp Thời Khóa Biểu Thông Minh</title>
+    
+    <!-- 1. Tailwind CSS (Không cần cài đặt) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 2. React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    
+    <!-- 3. Babel để viết JSX ngay trong trình duyệt -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Google Font cho đẹp -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+        }
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 min-h-screen">
+
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // --- ICONS (SVG trực tiếp để không lỗi thư viện) ---
+        const Icons = {
+            Users: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
+            BookOpen: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>,
+            GraduationCap: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>,
+            Calendar: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>,
+            Settings: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>,
+            Play: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>,
+            Trash2: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>,
+            Plus: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+            CheckCircle: () => <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>,
+            AlertCircle: () => <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>,
+            Loader: () => <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>,
+            Server: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>,
+            Wifi: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+        };
+
+        // --- UI COMPONENTS ---
+        const Card = ({ children, className = "" }) => (
+            <div className={`glass-effect rounded-xl shadow-sm border border-gray-100 p-6 ${className}`}>{children}</div>
+        );
+
+        const Button = ({ children, onClick, variant = "primary", className = "", disabled = false, loading = false }) => {
+            const baseStyle = "px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center justify-center gap-2 transform active:scale-95";
+            const variants = {
+                primary: "bg-blue-600 text-white hover:bg-blue-700 hover:shadow-lg disabled:bg-blue-300",
+                danger: "bg-red-500 text-white hover:bg-red-600 disabled:bg-red-300",
+                outline: "border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:bg-gray-100"
+            };
+            return (
+                <button onClick={onClick} className={`${baseStyle} ${variants[variant]} ${className}`} disabled={disabled || loading}>
+                    {loading && <Icons.Loader />}
+                    {children}
+                </button>
+            );
+        };
+
+        const Input = ({ label, value, onChange, placeholder = "", type = "text" }) => (
+            <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>
+                <input type={type} value={value} onChange={(e) => onChange(e.target.value)} 
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all" placeholder={placeholder} />
+            </div>
+        );
+
+        const Select = ({ label, value, onChange, options, disabled = false }) => (
+            <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>
+                <select value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60">
+                    <option value="">-- Chọn --</option>
+                    {options.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                </select>
+            </div>
+        );
+
+        // --- MAIN APPLICATION ---
+        function App() {
+            // URL Mặc định - Sửa dòng này thành link Backend của bạn
+            const [backendUrl, setBackendUrl] = useState("https://hoangthiencm-tkb.hf.space");
+            const [activeTab, setActiveTab] = useState("dashboard");
+            const [notification, setNotification] = useState({ type: "", message: "" });
+            
+            // DATA
+            const [teachers, setTeachers] = useState([]);
+            const [classes, setClasses] = useState([]);
+            const [subjects, setSubjects] = useState([]);
+            const [assignments, setAssignments] = useState([]);
+            const [loading, setLoading] = useState(false);
+            const [dataLoaded, setDataLoaded] = useState(false);
+
+            // Notify Helper
+            const notify = (type, message) => {
+                setNotification({ type, message });
+                setTimeout(() => setNotification({ type: "", message: "" }), 3000);
+            };
+
+            // API Helper
+            const apiCall = async (endpoint, method = "GET", body = null) => {
+                try {
+                    const headers = { "Content-Type": "application/json" };
+                    const config = { method, headers };
+                    if (body) config.body = JSON.stringify(body);
+                    
+                    const baseUrl = backendUrl.endsWith('/') ? backendUrl.slice(0, -1) : backendUrl;
+                    const res = await fetch(`${baseUrl}${endpoint}`, config);
+                    
+                    if (!res.ok) throw new Error(`API Error: ${res.statusText}`);
+                    const json = await res.json();
+                    return json.data;
+                } catch (err) {
+                    console.error(err);
+                    notify("error", "Lỗi kết nối: " + err.message);
+                    return null;
+                }
+            };
+
+            // Load Data
+            const loadData = async () => {
+                setLoading(true);
+                try {
+                    const [t, c, s, a] = await Promise.all([
+                        apiCall("/teachers/"),
+                        apiCall("/classes/"),
+                        apiCall("/subjects/"),
+                        apiCall("/assignments/")
+                    ]);
+                    if (t) setTeachers(t);
+                    if (c) setClasses(c);
+                    if (s) setSubjects(s);
+                    if (a) setAssignments(a);
+                    setDataLoaded(true);
+                    notify("success", "Đã kết nối thành công!");
+                } catch (e) { notify("error", "Không thể tải dữ liệu"); } 
+                finally { setLoading(false); }
+            };
+
+            // --- SUB-SCREENS ---
+            
+            // 1. Dashboard
+            const Dashboard = () => (
+                <div className="fade-in space-y-6">
+                    <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-8 text-white shadow-lg relative overflow-hidden">
+                         <div className="relative z-10">
+                            <h2 className="text-3xl font-bold mb-2">Xin chào Quản trị viên!</h2>
+                            <p className="opacity-90">Hệ thống sẵn sàng hoạt động. Backend đang chạy tại: {backendUrl}</p>
+                         </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        {[
+                            { title: "Giáo viên", val: teachers.length, icon: Icons.Users, color: "text-blue-600", bg: "bg-blue-50" },
+                            { title: "Lớp học", val: classes.length, icon: Icons.BookOpen, color: "text-green-600", bg: "bg-green-50" },
+                            { title: "Môn học", val: subjects.length, icon: Icons.GraduationCap, color: "text-purple-600", bg: "bg-purple-50" },
+                            { title: "Phân công", val: assignments.length, icon: Icons.Calendar, color: "text-orange-600", bg: "bg-orange-50" },
+                        ].map((item, i) => (
+                            <Card key={i} className="hover:shadow-md transition-all">
+                                <div className="flex justify-between items-center">
+                                    <div>
+                                        <p className="text-gray-500 text-sm font-medium uppercase">{item.title}</p>
+                                        <p className="text-3xl font-bold mt-2 text-gray-800">{item.val}</p>
+                                    </div>
+                                    <div className={`p-4 rounded-xl ${item.bg} ${item.color}`}>
+                                        <item.icon />
+                                    </div>
+                                </div>
+                            </Card>
+                        ))}
+                    </div>
+
+                    <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
+                        <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Icons.Settings className="text-gray-400"/> Cấu hình kết nối</h3>
+                        <div className="flex gap-4">
+                            <div className="flex-1">
+                                <input type="text" value={backendUrl} onChange={e => setBackendUrl(e.target.value)} 
+                                    className="w-full border rounded-lg px-4 py-2 bg-gray-50 font-mono text-sm" />
+                            </div>
+                            <Button onClick={loadData} loading={loading}>Kết nối lại</Button>
+                        </div>
+                    </div>
+                </div>
+            );
+
+            // 2. Teacher Manager
+            const TeacherManager = () => {
+                const [name, setName] = useState("");
+                const [shortName, setShortName] = useState("");
+                
+                const add = async () => {
+                    if(!name) return;
+                    const res = await apiCall("/teachers/", "POST", { name, short_name: shortName });
+                    if(res) { setTeachers([...teachers, res]); setName(""); setShortName(""); notify("success", "Đã thêm"); }
+                };
+                const del = async (id) => {
+                    if(!confirm("Xóa?")) return;
+                    await apiCall(`/teachers/${id}`, "DELETE");
+                    setTeachers(teachers.filter(t => t.id !== id));
+                };
+
+                return (
+                    <div className="fade-in space-y-6">
+                        <Card className="flex gap-4 items-end bg-blue-50/50">
+                            <div className="flex-1"><Input label="Họ tên" value={name} onChange={setName} placeholder="Nguyễn Văn A" /></div>
+                            <div className="w-1/4"><Input label="Tên tắt" value={shortName} onChange={setShortName} placeholder="GvA" /></div>
+                            <div className="mb-4"><Button onClick={add}><Icons.Plus /> Thêm</Button></div>
+                        </Card>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            {teachers.map(t => (
+                                <div key={t.id} className="bg-white p-4 rounded-lg border flex justify-between items-center shadow-sm">
+                                    <div><p className="font-bold text-gray-800">{t.name}</p><p className="text-xs text-gray-500">{t.short_name}</p></div>
+                                    <button onClick={() => del(t.id)} className="text-red-400 hover:text-red-600"><Icons.Trash2 /></button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                );
+            };
+
+            // 3. Class Manager (Tương tự Teacher)
+            const ClassManager = () => {
+                const [name, setName] = useState("");
+                const [grade, setGrade] = useState("6");
+                const add = async () => {
+                    if(!name) return;
+                    const res = await apiCall("/classes/", "POST", { name, grade: parseInt(grade) });
+                    if(res) { setClasses([...classes, res].sort((a,b)=>a.grade-b.grade)); setName(""); notify("success", "Đã thêm"); }
+                };
+                const del = async (id) => {
+                    if(!confirm("Xóa?")) return;
+                    await apiCall(`/classes/${id}`, "DELETE");
+                    setClasses(classes.filter(c => c.id !== id));
+                };
+                return (
+                    <div className="fade-in space-y-6">
+                        <Card className="flex gap-4 items-end bg-green-50/50">
+                            <div className="w-1/4"><Select label="Khối" value={grade} onChange={setGrade} options={[6,7,8,9].map(g=>({value:g, label:g}))} /></div>
+                            <div className="flex-1"><Input label="Tên Lớp" value={name} onChange={setName} placeholder="6A" /></div>
+                            <div className="mb-4"><Button onClick={add}><Icons.Plus /> Thêm</Button></div>
+                        </Card>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            {classes.map(c => (
+                                <div key={c.id} className="bg-white p-4 rounded-lg border flex justify-between items-center shadow-sm">
+                                    <span className="font-bold text-lg text-green-700">{c.name}</span>
+                                    <button onClick={() => del(c.id)} className="text-red-400 hover:text-red-600"><Icons.Trash2 /></button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                );
+            };
+
+            // 4. Subject Manager
+            const SubjectManager = () => {
+                const [name, setName] = useState("");
+                const add = async () => {
+                    if(!name) return;
+                    const res = await apiCall("/subjects/", "POST", { name });
+                    if(res) { setSubjects([...subjects, res]); setName(""); notify("success", "Đã thêm"); }
+                };
+                const del = async (id) => {
+                    if(!confirm("Xóa?")) return;
+                    await apiCall(`/subjects/${id}`, "DELETE");
+                    setSubjects(subjects.filter(s => s.id !== id));
+                };
+                return (
+                    <div className="fade-in space-y-6">
+                        <Card className="flex gap-4 items-end bg-purple-50/50">
+                            <div className="flex-1"><Input label="Tên Môn" value={name} onChange={setName} placeholder="Toán" /></div>
+                            <div className="mb-4"><Button onClick={add}><Icons.Plus /> Thêm</Button></div>
+                        </Card>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            {subjects.map(s => (
+                                <div key={s.id} className="bg-white p-4 rounded-lg border flex justify-between items-center shadow-sm">
+                                    <span className="font-medium text-purple-700">{s.name}</span>
+                                    <button onClick={() => del(s.id)} className="text-red-400 hover:text-red-600"><Icons.Trash2 /></button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                );
+            };
+
+            // 5. Assignment Manager
+            const AssignmentManager = () => {
+                const [cid, setCid] = useState("");
+                const [sid, setSid] = useState("");
+                const [tid, setTid] = useState("");
+                const [num, setNum] = useState("2");
+
+                const add = async () => {
+                    if(!cid || !sid || !tid) return notify("error", "Thiếu thông tin");
+                    const res = await apiCall("/assignments/", "POST", {
+                        class_id: cid, subject_id: sid, teacher_id: tid, periods_per_week: parseInt(num)
+                    });
+                    if(res) { 
+                        // Reload để lấy tên hiển thị
+                        const all = await apiCall("/assignments/");
+                        setAssignments(all);
+                        notify("success", "Đã phân công"); 
+                    }
+                };
+                const del = async (id) => {
+                    await apiCall(`/assignments/${id}`, "DELETE");
+                    setAssignments(assignments.filter(a => a.id !== id));
+                };
+
+                return (
+                    <div className="fade-in space-y-6">
+                        <Card className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end bg-orange-50/50">
+                            <Select label="Lớp" value={cid} onChange={setCid} options={classes.map(c=>({value:c.id, label:c.name}))} />
+                            <Select label="Môn" value={sid} onChange={setSid} options={subjects.map(s=>({value:s.id, label:s.name}))} />
+                            <Select label="Giáo viên" value={tid} onChange={setTid} options={teachers.map(t=>({value:t.id, label:t.name}))} />
+                            <Input label="Tiết/Tuần" value={num} onChange={setNum} type="number" />
+                            <div className="mb-4"><Button onClick={add} className="w-full"><Icons.Plus /> Thêm</Button></div>
+                        </Card>
+
+                        <div className="bg-white rounded-lg border overflow-hidden">
+                            <table className="w-full text-left border-collapse">
+                                <thead className="bg-gray-50 text-gray-500 text-sm">
+                                    <tr>
+                                        <th className="p-4 font-medium">Lớp</th>
+                                        <th className="p-4 font-medium">Môn</th>
+                                        <th className="p-4 font-medium">Giáo viên</th>
+                                        <th className="p-4 font-medium">Số tiết</th>
+                                        <th className="p-4 font-medium text-right">#</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {assignments.map(a => (
+                                        <tr key={a.id} className="hover:bg-gray-50">
+                                            <td className="p-4 font-bold text-gray-800">{a.classes?.name}</td>
+                                            <td className="p-4">{a.subjects?.name}</td>
+                                            <td className="p-4 text-blue-600">{a.teachers?.name}</td>
+                                            <td className="p-4">{a.periods_per_week}</td>
+                                            <td className="p-4 text-right"><button onClick={()=>del(a.id)} className="text-red-400"><Icons.Trash2 size={16}/></button></td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                );
+            };
+
+            // 6. Generator & Viewer
+            const Generator = () => {
+                const [status, setStatus] = useState("idle");
+                const [progress, setProgress] = useState(0);
+                const [msg, setMsg] = useState("");
+                const [results, setResults] = useState([]);
+                const [viewClass, setViewClass] = useState("");
+
+                const run = async () => {
+                    setStatus("running"); setProgress(0); setMsg("Khởi động...");
+                    const res = await apiCall("/generate/", "POST");
+                    if(res?.task_id) poll(res.task_id);
+                    else setStatus("error");
+                };
+
+                const poll = (tid) => {
+                    const i = setInterval(async () => {
+                        const res = await apiCall(`/generate/status/${tid}`);
+                        if(res) {
+                            setProgress(res.progress); setMsg(res.message);
+                            if(res.status === "completed") { clearInterval(i); setStatus("finished"); loadRes(tid); }
+                            if(res.status === "failed") { clearInterval(i); setStatus("error"); setMsg(res.error_log); }
+                        }
+                    }, 2000);
+                };
+
+                const loadRes = async (tid) => {
+                    const res = await apiCall(`/generate/results/${tid}`);
+                    if(res) setResults(res);
+                };
+
+                // Grid Rendering
+                const TimetableGrid = () => {
+                    if(!viewClass) return <div className="text-center p-8 text-gray-400">Chọn một lớp để xem thời khóa biểu</div>;
+                    const schedule = results.filter(r => r.class_id === viewClass);
+                    const days = ["Hai", "Ba", "Tư", "Năm", "Sáu"];
+                    const periods = [0,1,2,3,4,5,6,7,8]; // 9 tiết (0-4 sáng, 5-8 chiều)
+
+                    return (
+                        <div className="overflow-x-auto mt-6 border rounded-lg shadow-sm">
+                            <table className="w-full text-center border-collapse">
+                                <thead>
+                                    <tr>
+                                        <th className="p-3 bg-gray-100 border-b w-16">Tiết</th>
+                                        {days.map(d => <th key={d} className="p-3 bg-gray-100 border-b border-l font-semibold">Thứ {d}</th>)}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {periods.map(p => (
+                                        <tr key={p} className={p===4 ? "border-b-4 border-double border-gray-200" : "border-b"}>
+                                            <td className="p-3 font-bold text-gray-400 border-r bg-gray-50">{p+1}</td>
+                                            {days.map((d, dIdx) => {
+                                                const slot = schedule.find(r => r.day === dIdx && r.period === p);
+                                                return (
+                                                    <td key={dIdx} className="p-2 border-l min-w-[120px] h-16 hover:bg-blue-50 transition-colors">
+                                                        {slot ? (
+                                                            <div>
+                                                                <div className="font-bold text-blue-700 text-sm">{slot.subjects?.name}</div>
+                                                                <div className="text-xs text-gray-500 mt-1">{slot.teachers?.short_name || slot.teachers?.name}</div>
+                                                            </div>
+                                                        ) : <span className="text-gray-200">-</span>}
+                                                    </td>
+                                                );
+                                            })}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    );
+                };
+
+                return (
+                    <div className="fade-in space-y-8">
+                        {/* Control Panel */}
+                        <div className="text-center bg-gray-50 rounded-xl p-8 border border-dashed border-gray-300">
+                            {status === "idle" && (
+                                <Button onClick={run} className="text-lg px-8 py-3 shadow-xl shadow-blue-200">
+                                    <Icons.Play /> Bắt đầu Xếp TKB Tự động
+                                </Button>
+                            )}
+                            {status === "running" && (
+                                <div className="max-w-md mx-auto">
+                                    <div className="flex justify-between text-sm font-medium mb-2"><span>{msg}</span><span>{progress}%</span></div>
+                                    <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                                        <div className="bg-blue-600 h-full transition-all duration-500" style={{width: `${progress}%`}}></div>
+                                    </div>
+                                    <p className="mt-4 text-gray-400 animate-pulse text-sm">Đang tính toán tối ưu...</p>
+                                </div>
+                            )}
+                            {status === "finished" && (
+                                <div className="text-green-600 flex flex-col items-center">
+                                    <Icons.CheckCircle />
+                                    <span className="font-bold text-xl mt-2">Hoàn tất!</span>
+                                    <Button variant="outline" onClick={()=>setStatus("idle")} className="mt-4 text-sm">Chạy lại</Button>
+                                </div>
+                            )}
+                            {status === "error" && (
+                                <div className="text-red-500 flex flex-col items-center">
+                                    <Icons.AlertCircle />
+                                    <span className="font-bold mt-2">Lỗi: {msg}</span>
+                                    <Button onClick={()=>setStatus("idle")} className="mt-4">Thử lại</Button>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Result Viewer */}
+                        {results.length > 0 && (
+                            <div className="border-t pt-8">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h3 className="text-xl font-bold flex items-center gap-2"><Icons.Calendar/> Kết quả TKB</h3>
+                                    <div className="w-64">
+                                        <Select label="" value={viewClass} onChange={setViewClass} options={classes.map(c=>({value:c.id, label:c.name}))} />
+                                    </div>
+                                </div>
+                                <TimetableGrid />
+                            </div>
+                        )}
+                    </div>
+                );
+            };
+
+            // --- NAVIGATION & LAYOUT ---
+            const tabs = [
+                { id: "dashboard", label: "Tổng quan", icon: Icons.Server },
+                { id: "teachers", label: "Giáo viên", icon: Icons.Users },
+                { id: "classes", label: "Lớp học", icon: Icons.BookOpen },
+                { id: "subjects", label: "Môn học", icon: Icons.GraduationCap },
+                { id: "assignments", label: "Phân công", icon: Icons.Calendar },
+                { id: "generate", label: "Xếp TKB", icon: Icons.Play },
+            ];
+
+            return (
+                <div className="flex min-h-screen">
+                    {/* Sidebar */}
+                    <aside className="w-64 bg-white border-r fixed h-full z-10 hidden md:block">
+                        <div className="p-6 border-b flex items-center gap-3 font-bold text-xl text-blue-700">
+                            <Icons.Calendar /> SmartTKB
+                        </div>
+                        <nav className="p-4 space-y-2">
+                            {tabs.map(t => (
+                                <button key={t.id} onClick={() => setActiveTab(t.id)}
+                                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-all ${activeTab === t.id ? 'bg-blue-50 text-blue-700 font-medium shadow-sm' : 'text-gray-600 hover:bg-gray-50'}`}>
+                                    <t.icon /> {t.label}
+                                </button>
+                            ))}
+                        </nav>
+                        <div className="absolute bottom-0 w-full p-4 border-t text-xs text-center text-gray-400">
+                            v1.0.0 SingleFile
+                        </div>
+                    </aside>
+
+                    {/* Notification Toast */}
+                    {notification.message && (
+                        <div className={`fixed top-4 right-4 z-50 px-6 py-3 rounded-lg shadow-xl text-white font-medium fade-in ${notification.type==='error'?'bg-red-500':'bg-green-500'}`}>
+                            {notification.message}
+                        </div>
+                    )}
+
+                    {/* Main Content */}
+                    <main className="flex-1 md:ml-64 p-8">
+                        <div className="max-w-6xl mx-auto">
+                            {/* Mobile Header */}
+                            <div className="md:hidden mb-6 flex justify-between items-center bg-white p-4 rounded-lg shadow-sm">
+                                <span className="font-bold text-blue-700">SmartTKB</span>
+                                <div className="flex gap-2">
+                                    {tabs.map(t => (
+                                        <button key={t.id} onClick={() => setActiveTab(t.id)} className={`p-2 rounded ${activeTab===t.id ? 'bg-blue-100 text-blue-700':'text-gray-500'}`}>
+                                            <t.icon />
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <header className="mb-8 flex justify-between items-center">
+                                <h1 className="text-2xl font-bold text-gray-800">{tabs.find(t=>t.id===activeTab)?.label}</h1>
+                                {activeTab !== 'dashboard' && <Button variant="outline" onClick={loadData} className="text-sm"><Icons.Server/> Refresh</Button>}
+                            </header>
+
+                            {/* Render Active Tab */}
+                            <div className="min-h-[500px]">
+                                {activeTab === "dashboard" && <Dashboard />}
+                                {activeTab === "teachers" && <TeacherManager />}
+                                {activeTab === "classes" && <ClassManager />}
+                                {activeTab === "subjects" && <SubjectManager />}
+                                {activeTab === "assignments" && <AssignmentManager />}
+                                {activeTab === "generate" && <Generator />}
+                            </div>
+                        </div>
+                    </main>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
