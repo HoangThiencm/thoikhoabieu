@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Môn Học - SmartTKB</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script type="text/babel" src="js/common.js"></script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        function SubjectPage() {
+            const [data, setData] = React.useState([]);
+            const [name, setName] = React.useState("");
+
+            const load = async () => setData(await window.api.call("/subjects/") || []);
+            React.useEffect(() => { load(); }, []);
+
+            const add = async () => {
+                if(!name) return alert("Nhập tên môn!");
+                await window.api.call("/subjects/", "POST", { name });
+                setName("");
+                load();
+            };
+
+            const del = async (id) => {
+                if(confirm("Xóa môn học này?")) {
+                    await window.api.call(`/subjects/${id}`, "DELETE");
+                    load();
+                }
+            };
+
+            const handleImport = (e) => {
+                window.excel.import(e.target.files[0], async (rows) => {
+                    let count = 0;
+                    for(const r of rows) {
+                        const n = r["Tên môn"] || r["Name"] || r["name"];
+                        if(n) {
+                            await window.api.call("/subjects/", "POST", { name: n });
+                            count++;
+                        }
+                    }
+                    alert(`Đã nhập ${count} môn.`);
+                    load();
+                });
+            };
+
+            return (
+                <window.AppLayout>
+                    <div className="flex justify-between items-center mb-6">
+                        <h1 className="text-2xl font-bold">Quản lý Môn học</h1>
+                        <div className="flex gap-2">
+                            <button onClick={() => window.excel.export(data, "DS_MonHoc.xlsx")} className="bg-green-600 text-white px-3 py-2 rounded text-sm font-bold shadow hover:bg-green-700">📤 Xuất Excel</button>
+                            <label className="bg-blue-600 text-white px-3 py-2 rounded text-sm font-bold shadow hover:bg-blue-700 cursor-pointer">
+                                📥 Nhập Excel <input type="file" onChange={handleImport} hidden accept=".xlsx"/>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-xl shadow-sm mb-6 flex gap-4 items-end border">
+                        <div className="flex-1">
+                            <label className="text-sm font-bold text-gray-700">Tên Môn Học</label>
+                            <input value={name} onChange={e=>setName(e.target.value)} className="border p-2 rounded w-full mt-1" placeholder="Ví dụ: Toán, Lý, Hóa..."/>
+                        </div>
+                        <button onClick={add} className="bg-blue-600 text-white px-6 py-2 rounded font-bold hover:bg-blue-700 h-[42px]">Thêm</button>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        {data.map(item => (
+                            <div key={item.id} className="bg-white p-4 border rounded-lg shadow-sm flex justify-between items-center hover:shadow-md transition">
+                                <span className="font-bold text-lg text-purple-700">{item.name}</span>
+                                <button onClick={()=>del(item.id)} className="text-red-500 p-2 hover:bg-red-50 rounded">🗑️</button>
+                            </div>
+                        ))}
+                    </div>
+                </window.AppLayout>
+            );
+        }
+        ReactDOM.createRoot(document.getElementById('root')).render(<SubjectPage />);
+    </script>
+</body>
+</html>
