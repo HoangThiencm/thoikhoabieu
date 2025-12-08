@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Ràng Buộc - SmartTKB</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script type="text/babel" src="js/common.js"></script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        function ConfigPage() {
+            const [configs, setConfigs] = React.useState([]);
+            const [loading, setLoading] = React.useState(false);
+
+            const load = async () => {
+                const data = await window.api.call("/config/");
+                setConfigs(data || []);
+            };
+            React.useEffect(() => { load(); }, []);
+
+            const updateConfig = async (key, newValue) => {
+                setLoading(true);
+                await window.api.call(`/config/${key}`, "PUT", { value: newValue });
+                setLoading(false);
+                alert("Đã cập nhật thành công!");
+                load();
+            };
+
+            const ConfigItem = ({ item }) => {
+                const [val, setVal] = React.useState(item.value);
+                return (
+                    <div className="flex items-center justify-between p-4 border-b last:border-0 hover:bg-gray-50">
+                        <div>
+                            <p className="font-bold text-gray-800">{item.key}</p>
+                            <p className="text-sm text-gray-500">{item.description || "Cấu hình hệ thống"}</p>
+                        </div>
+                        <div className="flex gap-2">
+                            <input value={val} onChange={e=>setVal(e.target.value)} className="border rounded p-2 w-24 text-center font-mono" />
+                            <button onClick={()=>updateConfig(item.key, val)} className="bg-blue-600 text-white px-3 rounded hover:bg-blue-700 text-sm">Lưu</button>
+                        </div>
+                    </div>
+                );
+            };
+
+            return (
+                <window.AppLayout>
+                    <h1 className="text-2xl font-bold mb-6">Cấu hình & Ràng buộc</h1>
+                    
+                    <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+                        <div className="bg-gray-50 p-4 border-b font-bold text-gray-700">Tham số hệ thống</div>
+                        {configs.length > 0 ? (
+                            <div>
+                                {configs.map(c => <ConfigItem key={c.key} item={c} />)}
+                            </div>
+                        ) : (
+                            <div className="p-8 text-center text-gray-500">Đang tải cấu hình...</div>
+                        )}
+                    </div>
+
+                    <div className="mt-8 bg-yellow-50 p-6 rounded-xl border border-yellow-200">
+                        <h3 className="font-bold text-yellow-800 mb-2">💡 Ghi chú Ràng buộc:</h3>
+                        <ul className="list-disc list-inside text-yellow-700 space-y-1 text-sm">
+                            <li><b>periods_per_day:</b> Tổng số tiết trong 1 ngày (ví dụ 9 tiết: 5 sáng + 4 chiều).</li>
+                            <li><b>morning_slots:</b> Số tiết buổi sáng (thường là 5).</li>
+                            <li>Các ràng buộc giáo viên bận (unavailable) được chỉnh sửa trực tiếp trong phần <b>Giáo viên</b>.</li>
+                        </ul>
+                    </div>
+                </window.AppLayout>
+            );
+        }
+        ReactDOM.createRoot(document.getElementById('root')).render(<ConfigPage />);
+    </script>
+</body>
+</html>
