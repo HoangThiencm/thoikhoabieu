@@ -142,13 +142,18 @@
                 return form.unavailable_periods.some(s => s.day === day && s.period === period);
             };
 
-            // --- XỬ LÝ IMPORT THÔNG MINH (TỰ TẠO MÔN/LỚP) ---
+            // --- XỬ LÝ IMPORT THÔNG MINH ---
             const handleImport = (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
 
                 const sessionId = window.api.getSessionId();
                 if (!sessionId) return alert("Chưa chọn Đợt TKB!");
+
+                if(!confirm("Hệ thống sẽ tự động tạo Môn Học và Lớp Học nếu chưa có.\nBạn có muốn tiếp tục?")) {
+                    e.target.value = null;
+                    return;
+                }
 
                 setIsImporting(true);
 
@@ -157,82 +162,91 @@
                         let countTeacher = 0;
                         let countAssign = 0;
                         
-                        // --- GIAI ĐOẠN 1: QUÉT DỮ LIỆU CẦN THIẾT ---
+                        console.log("Bắt đầu phân tích dữ liệu import...");
+                        
+                        // --- GIAI ĐOẠN 1: QUÉT & TẠO DỮ LIỆU NỀN (Môn, Lớp) ---
+                        // Sử dụng Set để loại bỏ trùng lặp ngay từ đầu
                         const neededSubjects = new Set();
                         const neededClasses = new Set();
 
                         rows.forEach(r => {
-                            // 1. Quét từ cột Chuyên Môn
-                            if (r["ChuyenMon"]) {
-                                r["ChuyenMon"].split(",").forEach(s => {
-                                    if(s.trim()) neededSubjects.add(s.trim());
-                                });
-                            }
-                            // 2. Quét từ cột Phân Công (Môn: Lớp1, Lớp2)
-                            if (r["PhanCongGiangDay"]) {
-                                const assignGroups = r["PhanCongGiangDay"].split(";");
-                                assignGroups.forEach(group => {
-                                    if (group.includes(":")) {
-                                        const [subjName, classListStr] = group.split(":");
-                                        if(subjName.trim()) neededSubjects.add(subjName.trim());
-                                        if (classListStr) {
-                                            classListStr.split(",").forEach(c => {
-                                                if(c.trim()) neededClasses.add(c.trim());
+                            const phanCong = r["PhanCongGiangDay"] || "";
+                            const chuyenMon = r["ChuyenMon"] || "";
+
+                            // Ưu tiên quét từ Phân Công (vì có cấu trúc rõ ràng 'Môn: Lớp')
+                            if (phanCong) {
+                                // Tách theo dấu chấm phẩy ; (VD: Toán: 6A; Lý: 7A)
+                                const groups = phanCong.split(";");
+                                groups.forEach(g => {
+                                    if (g.includes(":")) {
+                                        const [subj, classesStr] = g.split(":");
+                                        if (subj && subj.trim()) neededSubjects.add(subj.trim());
+                                        
+                                        if (classesStr) {
+                                            classesStr.split(",").forEach(cls => {
+                                                if (cls && cls.trim()) neededClasses.add(cls.trim());
                                             });
                                         }
                                     }
                                 });
                             }
+                            
+                            // Quét thêm từ Chuyên môn (Cẩn thận với dấu phẩy trong tên môn)
+                            // Nếu môn học có tên "Hoạt động trải nghiệm, hướng nghiệp", việc split dấu phẩy sẽ sai.
+                            // Tạm thời split, nhưng user nên ưu tiên nhập đúng cột Phân Công
+                            if (chuyenMon) {
+                                chuyenMon.split(",").forEach(s => {
+                                    // Logic đơn giản: Nếu chuỗi quá ngắn hoặc có vẻ là phần đuôi của môn trước thì bỏ qua
+                                    // Tuy nhiên, tốt nhất là Backend xử lý duplicate
+                                    if(s.trim()) neededSubjects.add(s.trim());
+                                });
+                            }
                         });
 
-                        // --- GIAI ĐOẠN 2: TẠO MÔN/LỚP CÒN THIẾU ---
-                        
-                        // Lấy dữ liệu hiện tại để so sánh (Map tên viết thường -> ID)
-                        let currentSubjects = await window.api.call(`/subjects/?session_id=${sessionId}`) || [];
-                        let currentClasses = await window.api.call(`/classes/?session_id=${sessionId}`) || [];
-                        
-                        const subjectMap = new Map(currentSubjects.map(s => [s.name.toLowerCase(), s.id]));
-                        const classMap = new Map(currentClasses.map(c => [c.name.toLowerCase(), c.id]));
+                        // Map lưu trữ ID sau khi tạo/lấy:  LowerName -> ID
+                        const subjectMap = new Map();
+                        const classMap = new Map();
 
-                        // Tạo Môn Học thiếu
+                        // 1.1 XỬ LÝ MÔN HỌC
+                        console.log(`Tìm thấy ${neededSubjects.size} môn cần xử lý.`);
                         for (const name of neededSubjects) {
-                            const lowerName = name.toLowerCase();
-                            if (!subjectMap.has(lowerName)) {
-                                try {
-                                    console.log(`Đang tạo môn mới: ${name}`);
-                                    const res = await window.api.call("/subjects/", "POST", { name, session_id: sessionId });
-                                    if (res && res.id) subjectMap.set(lowerName, res.id);
-                                } catch (e) { console.error(`Lỗi tạo môn ${name}`, e); }
+                            try {
+                                // Gọi API tạo (Backend đã update để trả về ID cũ nếu trùng)
+                                const res = await window.api.call("/subjects/", "POST", { name, session_id: sessionId });
+                                if (res && res.id) {
+                                    subjectMap.set(name.toLowerCase(), res.id);
+                                }
+                            } catch (e) {
+                                console.warn(`Lỗi xử lý môn ${name}:`, e);
                             }
                         }
 
-                        // Tạo Lớp Học thiếu
+                        // 1.2 XỬ LÝ LỚP HỌC
+                        console.log(`Tìm thấy ${neededClasses.size} lớp cần xử lý.`);
                         for (const name of neededClasses) {
-                            const lowerName = name.toLowerCase();
-                            if (!classMap.has(lowerName)) {
-                                // Dự đoán khối từ tên lớp (ví dụ "6A" -> 6, "9/1" -> 9)
+                            try {
+                                // Tự động đoán khối từ tên lớp (VD: 6/1 -> 6, 9A -> 9)
                                 const gradeMatch = name.match(/\d+/);
-                                const grade = gradeMatch ? parseInt(gradeMatch[0]) : 6;
-                                try {
-                                    console.log(`Đang tạo lớp mới: ${name} (Khối ${grade})`);
-                                    const res = await window.api.call("/classes/", "POST", { name, grade, session_id: sessionId });
-                                    if (res && res.id) classMap.set(lowerName, res.id);
-                                } catch (e) { console.error(`Lỗi tạo lớp ${name}`, e); }
+                                const grade = gradeMatch ? parseInt(gradeMatch[0]) : 6; // Mặc định khối 6 nếu ko tìm thấy số
+
+                                const res = await window.api.call("/classes/", "POST", { name, grade, session_id: sessionId });
+                                if (res && res.id) {
+                                    classMap.set(name.toLowerCase(), res.id);
+                                }
+                            } catch (e) {
+                                console.warn(`Lỗi xử lý lớp ${name}:`, e);
                             }
                         }
 
-                        // --- GIAI ĐOẠN 3: TẠO GIÁO VIÊN VÀ PHÂN CÔNG ---
+                        // --- GIAI ĐOẠN 2: TẠO GIÁO VIÊN VÀ PHÂN CÔNG ---
+                        console.log("Bắt đầu tạo giáo viên...");
                         for(const r of rows) {
-                            const id = r["ID"] || "";
                             const name = r["HoTen"];
-                            const chuyenMonStr = r["ChuyenMon"];
-                            const phanCongStr = r["PhanCongGiangDay"];
-                            const tietBanStr = r["TietBan"];
-
+                            const idGV = r["ID"] || "";
                             if(!name) continue;
 
-                            const subjectList = chuyenMonStr ? chuyenMonStr.split(",").map(s => s.trim()) : [];
-                            
+                            // Xử lý tiết bận
+                            const tietBanStr = r["TietBan"];
                             const unavailable = [];
                             if (tietBanStr) {
                                 tietBanStr.toString().split(";").forEach(slot => {
@@ -243,15 +257,27 @@
                                 });
                             }
 
-                            // Tạo Giáo Viên
+                            // Xác định danh sách môn của GV
+                            const mySubjects = [];
+                            if (r["ChuyenMon"]) {
+                                r["ChuyenMon"].split(",").forEach(s => {
+                                    if (s.trim()) mySubjects.push(s.trim());
+                                });
+                            } else if (r["PhanCongGiangDay"]) {
+                                // Nếu không có cột chuyên môn, lấy từ phân công
+                                r["PhanCongGiangDay"].split(";").forEach(g => {
+                                    if(g.includes(":")) mySubjects.push(g.split(":")[0].trim());
+                                });
+                            }
+
+                            // Tạo GV
                             const teacherPayload = {
                                 name: name,
-                                short_name: id,
+                                short_name: idGV, // Mã GV
                                 session_id: sessionId,
-                                subjects: subjectList,
+                                subjects: [...new Set(mySubjects)], // Unique môn
                                 unavailable_periods: unavailable,
-                                target_periods: 19,
-                                secondary_subjects: [] 
+                                target_periods: 19
                             };
 
                             let newTeacherId = null;
@@ -260,24 +286,22 @@
                                 newTeacherId = res?.id;
                                 if (newTeacherId) countTeacher++;
                             } catch (err) {
-                                console.error("Lỗi tạo GV " + name, err);
-                                continue;
+                                console.error(`Lỗi tạo GV ${name}`, err);
+                                continue; 
                             }
 
-                            // Tạo Phân công
-                            if (newTeacherId && phanCongStr) {
-                                const assignGroups = phanCongStr.split(";");
+                            // Tạo Phân Công (Assignments)
+                            if (newTeacherId && r["PhanCongGiangDay"]) {
+                                const assignGroups = r["PhanCongGiangDay"].split(";");
                                 for (const group of assignGroups) {
                                     if (!group.includes(":")) continue;
                                     
                                     const [subjName, classListStr] = group.split(":");
-                                    // Tra ID môn từ Map đã cập nhật
                                     const sId = subjectMap.get(subjName.trim().toLowerCase());
 
                                     if (sId && classListStr) {
                                         const classNames = classListStr.split(",");
                                         for (const clsName of classNames) {
-                                            // Tra ID lớp từ Map đã cập nhật
                                             const cId = classMap.get(clsName.trim().toLowerCase());
                                             if (cId) {
                                                 try {
@@ -286,11 +310,11 @@
                                                         class_id: cId,
                                                         subject_id: sId,
                                                         teacher_id: newTeacherId,
-                                                        periods_per_week: 2 
+                                                        periods_per_week: 2 // Mặc định 2 tiết, user sửa sau
                                                     });
                                                     countAssign++;
                                                 } catch (assignErr) {
-                                                    console.error(`Lỗi phân công ${name} - ${clsName}`, assignErr);
+                                                    // Bỏ qua lỗi duplicate assignment
                                                 }
                                             }
                                         }
@@ -299,10 +323,10 @@
                             }
                         }
 
-                        alert(`✅ Hoàn tất!\n- Đã nhập: ${countTeacher} giáo viên\n- Đã tạo: ${countAssign} phân công\n- Đã tự động tạo các môn và lớp còn thiếu.`);
+                        alert(`✅ Hoàn tất!\n- Đã xử lý: ${countTeacher} giáo viên\n- Đã tạo: ${countAssign} phân công\n- Đã tự động đồng bộ Môn/Lớp.`);
                     } catch (err) {
                         console.error(err);
-                        alert("Có lỗi xảy ra trong quá trình Import: " + err.message);
+                        alert("Có lỗi nghiêm trọng: " + err.message);
                     } finally {
                         setIsImporting(false);
                         loadData();
