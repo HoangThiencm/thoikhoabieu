@@ -17,39 +17,48 @@
         function TeacherPage() {
             const [data, setData] = React.useState([]);
             const [form, setForm] = React.useState({ name: "", short_name: "", specialization: "" });
-            // State để theo dõi đang sửa giáo viên nào
             const [editingId, setEditingId] = React.useState(null);
 
-            const load = async () => setData(await window.api.call("/teachers/") || []);
+            // Hàm load dữ liệu
+            const load = async () => {
+                const sessionId = window.api.getSessionId();
+                if (!sessionId) return; // Nếu chưa có session thì Layout đã hiển thị cảnh báo
+                
+                // --- QUAN TRỌNG: Gửi session_id vào query params ---
+                const res = await window.api.call(`/teachers/?session_id=${sessionId}`);
+                setData(res || []);
+            };
+
             React.useEffect(() => { load(); }, []);
 
             const handleSubmit = async () => {
                 if(!form.name) return alert("Vui lòng nhập tên giáo viên!");
                 
+                const sessionId = window.api.getSessionId();
+                if (!sessionId) return alert("Lỗi: Chưa xác định phiên làm việc (Session ID).");
+
+                // --- QUAN TRỌNG: Thêm session_id vào body khi tạo mới ---
+                const payload = { ...form, session_id: sessionId };
+                
                 if (editingId) {
-                    // Logic Cập nhật (Edit)
-                    await window.api.call(`/teachers/${editingId}`, "PUT", form);
+                    await window.api.call(`/teachers/${editingId}`, "PUT", payload);
                     alert("Cập nhật thành công!");
                     setEditingId(null);
                 } else {
-                    // Logic Thêm mới (Add)
-                    await window.api.call("/teachers/", "POST", form);
+                    await window.api.call("/teachers/", "POST", payload);
                 }
                 
-                // Reset form sau khi lưu
                 setForm({ name: "", short_name: "", specialization: "" });
                 load();
             };
 
             const handleEdit = (item) => {
-                // Đổ dữ liệu lên form để sửa
                 setForm({
                     name: item.name,
                     short_name: item.short_name || "",
-                    specialization: item.specialization || ""
+                    specialization: item.specialization || "" // Note: Model mới chưa có specialization, bạn có thể cần thêm trường này vào backend nếu muốn dùng
                 });
                 setEditingId(item.id);
-                // Cuộn lên đầu trang
                 window.scrollTo({ top: 0, behavior: 'smooth' });
             };
 
@@ -66,18 +75,21 @@
             };
 
             const handleImport = (e) => {
+                const sessionId = window.api.getSessionId();
+                if (!sessionId) return alert("Chưa chọn Đợt TKB!");
+
                 window.excel.import(e.target.files[0], async (rows) => {
                     let count = 0;
                     for(const r of rows) {
                         const name = r["Họ tên"] || r["Name"] || r["name"];
                         const short = r["Tên tắt"] || r["ShortName"] || r["short_name"];
-                        const spec = r["Chuyên môn"] || r["Specialization"] || r["specialization"] || "";
+                        // Tạm thời bỏ qua specialization nếu backend chưa hỗ trợ, hoặc thêm vào model backend
                         
                         if(name) {
                             await window.api.call("/teachers/", "POST", { 
                                 name, 
                                 short_name: short,
-                                specialization: spec 
+                                session_id: sessionId // Thêm session_id khi import
                             });
                             count++;
                         }
@@ -102,7 +114,6 @@
                         </div>
                     </div>
 
-                    {/* Form thêm mới / Chỉnh sửa */}
                     <div className={`p-6 rounded-xl shadow-sm mb-8 border transition-colors ${editingId ? 'bg-orange-50 border-orange-200' : 'bg-white border-gray-200'}`}>
                         <div className="flex justify-between items-center mb-4 border-b pb-2">
                             <h3 className={`font-bold ${editingId ? 'text-orange-700' : 'text-gray-700'}`}>
@@ -144,7 +155,6 @@
                         </div>
                     </div>
 
-                    {/* Danh sách */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {data.map(item => (
                             <div key={item.id} className={`bg-white p-5 border rounded-xl shadow-sm hover:shadow-md transition flex justify-between items-start group ${editingId === item.id ? 'ring-2 ring-orange-400' : 'border-gray-200'}`}>
