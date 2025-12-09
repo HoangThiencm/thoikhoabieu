@@ -27,11 +27,15 @@
             const [num, setNum] = React.useState(2);
 
             const loadAll = async () => {
+                const sessId = window.api.getSessionId();
+                if(!sessId) return;
+
+                // Gửi session_id vào tất cả các API call
                 const [a, t, c, s] = await Promise.all([
-                    window.api.call("/assignments/"),
-                    window.api.call("/teachers/"),
-                    window.api.call("/classes/"),
-                    window.api.call("/subjects/")
+                    window.api.call(`/assignments/?session_id=${sessId}`),
+                    window.api.call(`/teachers/?session_id=${sessId}`),
+                    window.api.call(`/classes/?session_id=${sessId}`),
+                    window.api.call(`/subjects/?session_id=${sessId}`)
                 ]);
                 setAssignments(a || []);
                 setTeachers(t || []);
@@ -41,9 +45,16 @@
             React.useEffect(() => { loadAll(); }, []);
 
             const add = async () => {
+                const sessId = window.api.getSessionId();
+                if(!sessId) return alert("Chưa chọn đợt TKB");
                 if(!cid || !sid || !tid) return alert("Chọn đủ thông tin!");
+
                 await window.api.call("/assignments/", "POST", {
-                    class_id: cid, subject_id: sid, teacher_id: tid, periods_per_week: parseInt(num)
+                    session_id: sessId,
+                    class_id: cid, 
+                    subject_id: sid, 
+                    teacher_id: tid, 
+                    periods_per_week: parseInt(num)
                 });
                 loadAll();
             };
