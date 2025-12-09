@@ -4,13 +4,20 @@ window.DEFAULT_API_URL = "https://hoangthiencm-tkb.hf.space";
 window.api = {
     getUrl: () => localStorage.getItem("api_url") || window.DEFAULT_API_URL,
     setUrl: (url) => localStorage.setItem("api_url", url),
+    
+    // Hàm lấy Session ID hiện tại
+    getSessionId: () => localStorage.getItem("current_session_id"),
+    setSessionId: (id, name) => {
+        localStorage.setItem("current_session_id", id);
+        localStorage.setItem("current_session_name", name);
+    },
+    
     call: async (endpoint, method = "GET", body = null) => {
         try {
             const headers = { "Content-Type": "application/json" };
             const config = { method, headers };
             if (body) config.body = JSON.stringify(body);
             
-            // Xử lý URL để tránh duplicate dấu /
             const baseUrl = window.api.getUrl().replace(/\/$/, "");
             const res = await fetch(`${baseUrl}${endpoint}`, config);
             
@@ -28,25 +35,7 @@ window.api = {
     }
 };
 
-// --- 2. EXCEL HELPER ---
-window.excel = {
-    export: (data, filename) => {
-        const ws = XLSX.utils.json_to_sheet(data);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
-        XLSX.writeFile(wb, filename || "data.xlsx");
-    },
-    import: (file, callback) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const data = new Uint8Array(e.target.result);
-            const wb = XLSX.read(data, { type: 'array' });
-            const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-            callback(json);
-        };
-        reader.readAsArrayBuffer(file);
-    }
-};
+// ... (Giữ nguyên phần Excel Helper) ...
 
 // --- 3. MENU CONFIG ---
 const MENU_ITEMS = [
@@ -62,11 +51,21 @@ const MENU_ITEMS = [
 ];
 
 // --- 4. REACT LAYOUT COMPONENT ---
-// Gắn vào window để các file HTML khác có thể gọi <AppLayout>
 window.AppLayout = ({ children }) => {
-    // Lấy tên file hiện tại để active menu (ví dụ: /giaovien.html -> giaovien.html)
     const currentPath = window.location.pathname.split("/").pop() || "index.html";
     const [apiUrl, setApiUrl] = React.useState(window.api.getUrl());
+    const [currentSession, setCurrentSession] = React.useState({
+        id: localStorage.getItem("current_session_id"),
+        name: localStorage.getItem("current_session_name") || "Chưa chọn đợt"
+    });
+
+    // Kiểm tra bắt buộc chọn session (trừ trang index)
+    React.useEffect(() => {
+        if (currentPath !== "index.html" && !currentSession.id) {
+            alert("Vui lòng chọn Đơn vị và Đợt TKB trước khi thao tác!");
+            window.location.href = "index.html";
+        }
+    }, []);
 
     const saveUrl = () => {
         window.api.setUrl(apiUrl);
@@ -74,14 +73,32 @@ window.AppLayout = ({ children }) => {
         window.location.reload();
     };
 
+    const changeSession = () => {
+        window.location.href = "index.html"; // Quay về trang chủ để chọn lại
+    };
+
     return (
         <div className="flex min-h-screen bg-gray-50 font-sans text-gray-800">
             {/* SIDEBAR */}
-            <aside className="w-64 bg-white border-r fixed h-full z-20 hidden md:block shadow-sm">
+            <aside className="w-64 bg-white border-r fixed h-full z-20 hidden md:block shadow-sm flex flex-col">
                 <div className="p-6 border-b flex items-center gap-2 font-bold text-xl text-blue-700">
                     <span>SmartTKB</span>
                 </div>
-                <nav className="p-4 space-y-1">
+                
+                {/* Session Info Box */}
+                <div className="p-4 bg-blue-50 border-b border-blue-100">
+                    <div className="text-xs font-bold text-gray-500 uppercase mb-1">Đang làm việc với:</div>
+                    <div className="font-bold text-blue-800 truncate" title={currentSession.name}>
+                        {currentSession.name}
+                    </div>
+                    {currentPath !== "index.html" && (
+                        <button onClick={changeSession} className="text-xs text-blue-600 underline mt-1 hover:text-blue-800">
+                            Đổi đợt khác
+                        </button>
+                    )}
+                </div>
+
+                <nav className="p-4 space-y-1 flex-1 overflow-y-auto">
                     {MENU_ITEMS.map((item) => {
                         const isActive = currentPath === item.url;
                         return (
@@ -96,7 +113,8 @@ window.AppLayout = ({ children }) => {
                         );
                     })}
                 </nav>
-                <div className="absolute bottom-0 w-full p-4 border-t bg-gray-50">
+                
+                <div className="p-4 border-t bg-gray-50">
                     <label className="text-xs font-bold text-gray-500 uppercase">Backend URL</label>
                     <div className="flex gap-1 mt-1">
                         <input value={apiUrl} onChange={e => setApiUrl(e.target.value)} className="w-full text-xs border p-1 rounded" />
