@@ -2,119 +2,196 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <title>Trang Chủ - SmartTKB</title>
-    <!-- Thư viện CSS/JS Online (CDN) -->
+    <title>Quản lý Đợt TKB - SmartTKB</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    
-    <!-- Load File Dùng Chung -->
-    <script type="text/babel" src="js/common.js"></script>
+    <script src="js/common.js" type="text/babel"></script>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        function DashboardPage() {
-            const [stats, setStats] = React.useState({ t: 0, c: 0, s: 0, a: 0 });
+        function ContextManager() {
+            const [units, setUnits] = React.useState([]);
+            const [years, setYears] = React.useState([]);
+            const [sessions, setSessions] = React.useState([]);
 
+            const [selectedUnit, setSelectedUnit] = React.useState("");
+            const [selectedYear, setSelectedYear] = React.useState("");
+            
+            // UI States for creating new items
+            const [isCreatingUnit, setIsCreatingUnit] = React.useState(false);
+            const [newUnitName, setNewUnitName] = React.useState("");
+            
+            const [isCreatingYear, setIsCreatingYear] = React.useState(false);
+            const [newYearName, setNewYearName] = React.useState("");
+
+            const [isCreatingSession, setIsCreatingSession] = React.useState(false);
+            const [newSessionName, setNewSessionName] = React.useState("");
+
+            // Load Units on start
             React.useEffect(() => {
-                const load = async () => {
-                    // Gọi song song các API để lấy số liệu thống kê
-                    const [t, c, s, a] = await Promise.all([
-                        window.api.call("/teachers/"),
-                        window.api.call("/classes/"),
-                        window.api.call("/subjects/"),
-                        window.api.call("/assignments/")
-                    ]);
-                    setStats({
-                        t: t?.length || 0,
-                        c: c?.length || 0,
-                        s: s?.length || 0,
-                        a: a?.length || 0
-                    });
-                };
-                load();
+                const loadUnits = async () => setUnits(await window.api.call("/context/units") || []);
+                loadUnits();
             }, []);
 
-            const Card = ({ title, val, color, icon }) => (
-                <div className={`p-6 rounded-xl bg-white shadow-sm border-l-4 ${color} transform transition hover:scale-105`}>
-                    <div className="flex justify-between items-center">
-                        <div>
-                            <h3 className="text-gray-500 text-xs font-bold uppercase tracking-wider">{title}</h3>
-                            <p className="text-4xl font-bold text-gray-800 mt-2">{val}</p>
-                        </div>
-                        <div className="text-4xl opacity-20">{icon}</div>
-                    </div>
-                </div>
-            );
+            // Load Years when Unit changes
+            React.useEffect(() => {
+                if (selectedUnit) {
+                    const loadYears = async () => setYears(await window.api.call(`/context/years?unit_id=${selectedUnit}`) || []);
+                    loadYears();
+                    setSessions([]); setSelectedYear("");
+                }
+            }, [selectedUnit]);
+
+            // Load Sessions when Year changes
+            React.useEffect(() => {
+                if (selectedYear) {
+                    const loadSessions = async () => setSessions(await window.api.call(`/context/sessions?year_id=${selectedYear}`) || []);
+                    loadSessions();
+                }
+            }, [selectedYear]);
+
+            // Handlers
+            const handleCreateUnit = async () => {
+                if (!newUnitName) return;
+                await window.api.call("/context/units", "POST", { name: newUnitName });
+                setUnits(await window.api.call("/context/units"));
+                setIsCreatingUnit(false); setNewUnitName("");
+            };
+
+            const handleCreateYear = async () => {
+                if (!newYearName || !selectedUnit) return;
+                await window.api.call("/context/years", "POST", { unit_id: selectedUnit, name: newYearName });
+                setYears(await window.api.call(`/context/years?unit_id=${selectedUnit}`));
+                setIsCreatingYear(false); setNewYearName("");
+            };
+
+            const handleCreateSession = async () => {
+                if (!newSessionName || !selectedYear) return;
+                await window.api.call("/context/sessions", "POST", { school_year_id: selectedYear, name: newSessionName });
+                setSessions(await window.api.call(`/context/sessions?year_id=${selectedYear}`));
+                setIsCreatingSession(false); setNewSessionName("");
+            };
+
+            const handleSelectSession = (sess) => {
+                window.api.setSessionId(sess.id, sess.name);
+                alert(`Đã chọn làm việc với: ${sess.name}`);
+                // Chuyển hướng sang trang giáo viên hoặc dashboard
+                // Ở đây ta reload để cập nhật sidebar
+                window.location.reload(); 
+            };
+            
+            const handleDeleteSession = async (sessId) => {
+                if(confirm("Bạn có chắc chắn muốn xóa đợt này không? Mọi dữ liệu TKB bên trong sẽ mất hết!")) {
+                    await window.api.call(`/context/sessions/${sessId}`, "DELETE");
+                    setSessions(await window.api.call(`/context/sessions?year_id=${selectedYear}`));
+                }
+            };
 
             return (
                 <window.AppLayout>
-                    <div className="mb-8 flex justify-between items-end">
-                        <div>
-                            <h1 className="text-3xl font-bold text-gray-900">Tổng quan hệ thống</h1>
-                            <p className="text-gray-500 mt-1">Xin chào Quản trị viên, dưới đây là tình hình dữ liệu hiện tại.</p>
-                        </div>
-                        <div className="text-sm text-gray-400">
-                            Hôm nay: {new Date().toLocaleDateString('vi-VN')}
-                        </div>
-                    </div>
+                    <h1 className="text-3xl font-bold text-gray-800 mb-8">Quản lý Đợt Thời Khóa Biểu</h1>
 
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-                        <Card title="Giáo viên" val={stats.t} color="border-blue-500" icon="👨‍🏫" />
-                        <Card title="Lớp học" val={stats.c} color="border-green-500" icon="🏫" />
-                        <Card title="Môn học" val={stats.s} color="border-purple-500" icon="📚" />
-                        <Card title="Phân công" val={stats.a} color="border-orange-500" icon="📅" />
-                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                        {/* CỘT 1: ĐƠN VỊ */}
+                        <div className="bg-white p-6 rounded-xl shadow border border-blue-100">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="font-bold text-lg text-blue-800">1. Đơn vị / Trường</h3>
+                                <button onClick={() => setIsCreatingUnit(true)} className="text-sm bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200">+ Thêm</button>
+                            </div>
+                            
+                            {isCreatingUnit && (
+                                <div className="mb-4 flex gap-2">
+                                    <input autoFocus className="border p-1 text-sm rounded w-full" placeholder="Tên trường..." value={newUnitName} onChange={e => setNewUnitName(e.target.value)} />
+                                    <button onClick={handleCreateUnit} className="bg-blue-600 text-white px-2 rounded text-sm">Lưu</button>
+                                </div>
+                            )}
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="bg-white p-6 rounded-xl shadow-sm border">
-                            <h3 className="font-bold text-lg mb-4 text-blue-800">🚀 Bắt đầu nhanh</h3>
-                            <ul className="space-y-3">
-                                <li className="flex items-center gap-3 text-gray-700">
-                                    <span className="bg-blue-100 text-blue-800 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold">1</span>
-                                    <span>Nhập danh sách <b>Giáo viên</b> và <b>Lớp học</b>.</span>
-                                </li>
-                                <li className="flex items-center gap-3 text-gray-700">
-                                    <span className="bg-blue-100 text-blue-800 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold">2</span>
-                                    <span>Khai báo <b>Môn học</b> trong chương trình.</span>
-                                </li>
-                                <li className="flex items-center gap-3 text-gray-700">
-                                    <span className="bg-blue-100 text-blue-800 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold">3</span>
-                                    <span>Thực hiện <b>Phân công chuyên môn</b> (Ai dạy lớp nào).</span>
-                                </li>
-                                <li className="flex items-center gap-3 text-gray-700">
-                                    <span className="bg-blue-100 text-blue-800 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold">4</span>
-                                    <span>Vào mục <b>Xếp TKB</b> để chạy thuật toán tự động.</span>
-                                </li>
-                            </ul>
-                        </div>
-
-                        <div className="bg-blue-50 p-6 rounded-xl border border-blue-100">
-                            <h3 className="font-bold text-lg mb-4 text-blue-800">ℹ️ Trạng thái hệ thống</h3>
-                            <div className="space-y-2 text-sm">
-                                <div className="flex justify-between">
-                                    <span className="text-gray-600">Backend URL:</span>
-                                    <span className="font-mono text-blue-600 truncate max-w-[200px]">{window.api.getUrl()}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-gray-600">Trạng thái API:</span>
-                                    <span className="text-green-600 font-bold">● Đang hoạt động</span>
-                                </div>
-                                <div className="mt-4 pt-4 border-t border-blue-200 text-xs text-gray-500">
-                                    Phiên bản frontend: <b>v1.2 (Multi-page)</b>
-                                </div>
+                            <div className="space-y-2 max-h-96 overflow-y-auto">
+                                {units.map(u => (
+                                    <div key={u.id} 
+                                         onClick={() => setSelectedUnit(u.id)}
+                                         className={`p-3 rounded cursor-pointer border transition ${selectedUnit === u.id ? 'bg-blue-600 text-white border-blue-600' : 'hover:bg-gray-50 border-gray-200'}`}>
+                                        {u.name}
+                                    </div>
+                                ))}
+                                {units.length === 0 && <p className="text-sm text-gray-400 italic text-center py-4">Chưa có đơn vị nào.</p>}
                             </div>
                         </div>
+
+                        {/* CỘT 2: NĂM HỌC */}
+                        <div className={`bg-white p-6 rounded-xl shadow border border-green-100 transition-opacity ${!selectedUnit ? 'opacity-50 pointer-events-none' : ''}`}>
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="font-bold text-lg text-green-800">2. Năm học</h3>
+                                <button onClick={() => setIsCreatingYear(true)} className="text-sm bg-green-100 text-green-700 px-2 py-1 rounded hover:bg-green-200">+ Thêm</button>
+                            </div>
+
+                            {isCreatingYear && (
+                                <div className="mb-4 flex gap-2">
+                                    <input autoFocus className="border p-1 text-sm rounded w-full" placeholder="VD: 2023-2024" value={newYearName} onChange={e => setNewYearName(e.target.value)} />
+                                    <button onClick={handleCreateYear} className="bg-green-600 text-white px-2 rounded text-sm">Lưu</button>
+                                </div>
+                            )}
+
+                            <div className="space-y-2 max-h-96 overflow-y-auto">
+                                {years.map(y => (
+                                    <div key={y.id} 
+                                         onClick={() => setSelectedYear(y.id)}
+                                         className={`p-3 rounded cursor-pointer border transition ${selectedYear === y.id ? 'bg-green-600 text-white border-green-600' : 'hover:bg-gray-50 border-gray-200'}`}>
+                                        {y.name}
+                                    </div>
+                                ))}
+                                {years.length === 0 && <p className="text-sm text-gray-400 italic text-center py-4">Chọn đơn vị để xem năm học.</p>}
+                            </div>
+                        </div>
+
+                        {/* CỘT 3: ĐỢT TKB */}
+                        <div className={`bg-white p-6 rounded-xl shadow border border-orange-100 transition-opacity ${!selectedYear ? 'opacity-50 pointer-events-none' : ''}`}>
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="font-bold text-lg text-orange-800">3. Đợt TKB</h3>
+                                <button onClick={() => setIsCreatingSession(true)} className="text-sm bg-orange-100 text-orange-700 px-2 py-1 rounded hover:bg-orange-200">+ Thêm</button>
+                            </div>
+
+                            {isCreatingSession && (
+                                <div className="mb-4 flex gap-2">
+                                    <input autoFocus className="border p-1 text-sm rounded w-full" placeholder="VD: Học kỳ 1..." value={newSessionName} onChange={e => setNewSessionName(e.target.value)} />
+                                    <button onClick={handleCreateSession} className="bg-orange-600 text-white px-2 rounded text-sm">Lưu</button>
+                                </div>
+                            )}
+
+                            <div className="space-y-2 max-h-96 overflow-y-auto">
+                                {sessions.map(s => (
+                                    <div key={s.id} className="group relative">
+                                        <div onClick={() => handleSelectSession(s)}
+                                             className="p-3 rounded cursor-pointer border border-gray-200 hover:bg-orange-50 hover:border-orange-300 transition bg-white shadow-sm">
+                                            <div className="font-bold text-gray-800">{s.name}</div>
+                                            <div className="text-xs text-gray-500 flex justify-between mt-1">
+                                                <span>{new Date(s.created_at).toLocaleDateString('vi-VN')}</span>
+                                                {s.is_locked && <span className="text-red-500 font-bold">🔒 Đã khóa</span>}
+                                            </div>
+                                        </div>
+                                        <button onClick={() => handleDeleteSession(s.id)} 
+                                            className="absolute top-2 right-2 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition">
+                                            ✕
+                                        </button>
+                                    </div>
+                                ))}
+                                {sessions.length === 0 && <p className="text-sm text-gray-400 italic text-center py-4">Chọn năm học để xem các đợt TKB.</p>}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div className="mt-8 p-4 bg-gray-100 rounded text-sm text-gray-600">
+                        <b>Hướng dẫn:</b> Chọn lần lượt từ trái sang phải (1 -> 2 -> 3). Click vào một <b>Đợt TKB</b> ở cột 3 để kích hoạt nó và bắt đầu làm việc (nhập giáo viên, xếp lịch...).
                     </div>
                 </window.AppLayout>
             );
         }
 
-        ReactDOM.createRoot(document.getElementById('root')).render(<DashboardPage />);
+        ReactDOM.createRoot(document.getElementById('root')).render(<ContextManager />);
     </script>
 </body>
 </html>
