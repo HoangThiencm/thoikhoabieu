@@ -5,11 +5,22 @@ window.api = {
     getUrl: () => localStorage.getItem("api_url") || window.DEFAULT_API_URL,
     setUrl: (url) => localStorage.setItem("api_url", url),
     
-    // Hàm lấy Session ID hiện tại
-    getSessionId: () => localStorage.getItem("current_session_id"),
+    // Cập nhật: Hàm lấy Session ID an toàn hơn
+    getSessionId: () => {
+        const id = localStorage.getItem("current_session_id");
+        // Nếu id là chuỗi "null", "undefined" hoặc rỗng -> coi như chưa có
+        if (!id || id === "null" || id === "undefined") return null;
+        return id;
+    },
+    
     setSessionId: (id, name) => {
-        localStorage.setItem("current_session_id", id);
-        localStorage.setItem("current_session_name", name);
+        if (!id) {
+            localStorage.removeItem("current_session_id");
+            localStorage.removeItem("current_session_name");
+        } else {
+            localStorage.setItem("current_session_id", id);
+            localStorage.setItem("current_session_name", name);
+        }
     },
     
     call: async (endpoint, method = "GET", body = null) => {
@@ -18,33 +29,32 @@ window.api = {
             const config = { method, headers };
             if (body) config.body = JSON.stringify(body);
             
-            // Xử lý URL để tránh duplicate dấu /
+            // Xử lý URL
             const baseUrl = window.api.getUrl().replace(/\/$/, "");
             const res = await fetch(`${baseUrl}${endpoint}`, config);
             
             if (!res.ok) {
                 const errJson = await res.json().catch(() => ({}));
-                // --- SỬA LỖI HIỂN THỊ [object Object] ---
+                // Xử lý thông điệp lỗi
                 let errMsg = `Lỗi API (${res.status}): ${res.statusText}`;
                 
                 if (errJson.detail) {
                     if (typeof errJson.detail === 'string') {
                         errMsg = errJson.detail;
                     } else if (Array.isArray(errJson.detail)) {
-                        // Trường hợp lỗi validation (Pydantic) trả về mảng
                         errMsg = errJson.detail.map(e => `${e.loc.join('.')}: ${e.msg}`).join('\n');
                     } else {
                         errMsg = JSON.stringify(errJson.detail);
                     }
                 }
                 throw new Error(errMsg);
-                // ----------------------------------------
             }
             const json = await res.json();
             return json.data;
         } catch (err) {
             console.error("API Call Error:", err);
-            alert("⚠️ " + err.message); // Hiển thị thông báo lỗi rõ ràng
+            // Alert lỗi để người dùng biết
+            alert("⚠️ " + err.message); 
             return null;
         }
     }
@@ -88,14 +98,14 @@ window.AppLayout = ({ children }) => {
     const currentPath = window.location.pathname.split("/").pop() || "index.html";
     const [apiUrl, setApiUrl] = React.useState(window.api.getUrl());
     const [currentSession, setCurrentSession] = React.useState({
-        id: localStorage.getItem("current_session_id"),
+        id: window.api.getSessionId(),
         name: localStorage.getItem("current_session_name") || "Chưa chọn đợt"
     });
 
     // Kiểm tra bắt buộc chọn session
     React.useEffect(() => {
         if (currentPath !== "index.html" && !currentSession.id) {
-            // Không alert ngay để tránh spam, nhưng hiển thị giao diện cảnh báo
+            // Nếu chưa có session, hiển thị thông báo trong Main Content
         }
     }, []);
 
@@ -117,7 +127,6 @@ window.AppLayout = ({ children }) => {
                     <span>SmartTKB</span>
                 </div>
                 
-                {/* Session Info Box */}
                 <div className="p-4 bg-blue-50 border-b border-blue-100">
                     <div className="text-xs font-bold text-gray-500 uppercase mb-1">Đang làm việc với:</div>
                     <div className="font-bold text-blue-800 truncate" title={currentSession.name}>
@@ -159,10 +168,12 @@ window.AppLayout = ({ children }) => {
             <main className="flex-1 md:ml-64 p-8">
                 <div className="max-w-7xl mx-auto">
                     {!currentSession.id && currentPath !== "index.html" ? (
-                        <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-4 rounded-lg text-center">
-                            <h3 className="font-bold text-lg">⚠️ Chưa chọn Đợt TKB</h3>
-                            <p className="mb-2">Vui lòng quay lại trang Tổng quan để chọn Đơn vị và Năm học.</p>
-                            <a href="index.html" className="inline-block bg-yellow-600 text-white px-4 py-2 rounded font-bold hover:bg-yellow-700">Quay về chọn Đợt</a>
+                        <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-8 rounded-xl text-center shadow-sm">
+                            <h3 className="font-bold text-2xl mb-2">⚠️ Chưa chọn Đợt TKB</h3>
+                            <p className="mb-6 text-gray-600">Bạn cần chọn Đơn vị và Năm học trước khi bắt đầu nhập liệu.</p>
+                            <a href="index.html" className="inline-block bg-yellow-600 text-white px-6 py-3 rounded-full font-bold hover:bg-yellow-700 transition transform hover:scale-105">
+                                Quay về trang Tổng quan
+                            </a>
                         </div>
                     ) : (
                         children
