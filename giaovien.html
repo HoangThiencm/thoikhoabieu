@@ -22,7 +22,9 @@
         function TeacherPage() {
             const [teachers, setTeachers] = React.useState([]);
             const [subjects, setSubjects] = React.useState([]);
-            // Giả lập danh sách tổ chuyên môn (thực tế nên lấy từ API nếu có bảng groups)
+            const [classes, setClasses] = React.useState([]); // Thêm state Classes để đối chiếu khi import
+            
+            // Giả lập danh sách tổ chuyên môn
             const [groups, setGroups] = React.useState(["Toán - Tin", "Văn - Sử - Địa", "KHTN", "Ngoại ngữ", "Nghệ thuật", "GDTC"]);
             const [roles, setRoles] = React.useState(["Giáo viên", "Tổ trưởng", "Phó hiệu trưởng", "Thỉnh giảng"]);
 
@@ -30,24 +32,27 @@
                 name: "", short_name: "", email: "", 
                 professional_group_name: "", role: "Giáo viên", target_periods: 19,
                 subjects: [], secondary_subjects: [], 
-                unavailable_periods: [] // Mảng các object {day: 0, period: 1}
+                unavailable_periods: [] 
             });
             
             const [editingId, setEditingId] = React.useState(null);
-            const [showForm, setShowForm] = React.useState(false); // Ẩn/hiện form
+            const [showForm, setShowForm] = React.useState(false);
+            const [isImporting, setIsImporting] = React.useState(false); // Trạng thái loading khi import
 
             // Hàm load dữ liệu
             const loadData = async () => {
                 const sessionId = window.api.getSessionId();
                 if (!sessionId) return;
                 
-                const [tData, sData] = await Promise.all([
+                const [tData, sData, cData] = await Promise.all([
                     window.api.call(`/teachers/?session_id=${sessionId}`),
-                    window.api.call(`/subjects/?session_id=${sessionId}`) // Cần API lấy môn học
+                    window.api.call(`/subjects/?session_id=${sessionId}`),
+                    window.api.call(`/classes/?session_id=${sessionId}`) // Load thêm lớp học
                 ]);
                 
                 setTeachers(tData || []);
                 setSubjects(sData || []);
+                setClasses(cData || []);
             };
 
             React.useEffect(() => { loadData(); }, []);
@@ -58,13 +63,10 @@
                 const sessionId = window.api.getSessionId();
                 if (!sessionId) return alert("Lỗi: Chưa xác định phiên làm việc.");
 
-                // Chuẩn hóa dữ liệu trước khi gửi
                 const payload = {
                     ...form,
                     session_id: sessionId,
-                    // Đảm bảo kiểu dữ liệu đúng với Backend Model
                     target_periods: parseInt(form.target_periods) || 0,
-                    // Backend nhận unavailable_periods là list object
                     unavailable_periods: form.unavailable_periods
                 };
                 
@@ -99,7 +101,7 @@
                     professional_group_name: item.professional_group_name || "",
                     role: item.role || "Giáo viên",
                     target_periods: item.target_periods || 19,
-                    subjects: item.subjects || [], // Backend cần trả về mảng tên môn học
+                    subjects: item.subjects || [],
                     secondary_subjects: item.secondary_subjects || [],
                     unavailable_periods: item.unavailable_periods || []
                 });
@@ -115,7 +117,6 @@
                 }
             };
 
-            // Hàm xử lý chọn môn học (đa chọn)
             const toggleSubject = (subjName, isSecondary = false) => {
                 const field = isSecondary ? 'secondary_subjects' : 'subjects';
                 const currentList = form[field];
@@ -126,7 +127,6 @@
                 }
             };
 
-            // Hàm xử lý chọn lịch bận
             const toggleBusySlot = (day, period) => {
                 const currentSlots = form.unavailable_periods;
                 const exists = currentSlots.some(s => s.day === day && s.period === period);
@@ -142,6 +142,113 @@
                 return form.unavailable_periods.some(s => s.day === day && s.period === period);
             };
 
+            // --- XỬ LÝ IMPORT THÔNG MINH ---
+            const handleImport = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const sessionId = window.api.getSessionId();
+                if (!sessionId) return alert("Chưa chọn Đợt TKB!");
+
+                setIsImporting(true);
+
+                window.excel.import(file, async (rows) => {
+                    let countTeacher = 0;
+                    let countAssign = 0;
+
+                    // Helper để tìm ID từ Tên (case-insensitive)
+                    const findSubjectId = (name) => subjects.find(s => s.name.toLowerCase() === name.trim().toLowerCase())?.id;
+                    const findClassId = (name) => classes.find(c => c.name.toLowerCase() === name.trim().toLowerCase() || c.name.replace("/", "").toLowerCase() === name.trim().toLowerCase())?.id;
+
+                    for(const r of rows) {
+                        // 1. Map dữ liệu từ CSV
+                        const id = r["ID"] || "";
+                        const name = r["HoTen"];
+                        const chuyenMonStr = r["ChuyenMon"]; // Ví dụ: "Toán, Tin học"
+                        const phanCongStr = r["PhanCongGiangDay"]; // Ví dụ: "Toán: 6/1, 6/2; Tin: 6/1"
+                        const tietBanStr = r["TietBan"]; // Ví dụ: "0-1;0-2" (Ngày-Tiết)
+
+                        if(!name) continue;
+
+                        // 2. Xử lý chuyên môn (tách chuỗi thành mảng)
+                        const subjectList = chuyenMonStr ? chuyenMonStr.split(",").map(s => s.trim()) : [];
+
+                        // 3. Xử lý tiết bận
+                        const unavailable = [];
+                        if (tietBanStr) {
+                            tietBanStr.toString().split(";").forEach(slot => {
+                                const parts = slot.trim().split("-"); // Giả định format Day-Period
+                                if (parts.length === 2) {
+                                    unavailable.push({ day: parseInt(parts[0]), period: parseInt(parts[1]) });
+                                }
+                            });
+                        }
+
+                        // 4. Tạo Giáo Viên
+                        const teacherPayload = {
+                            name: name,
+                            short_name: id,
+                            session_id: sessionId,
+                            subjects: subjectList,
+                            unavailable_periods: unavailable,
+                            // Mặc định các trường khác
+                            target_periods: 19,
+                            secondary_subjects: [] 
+                        };
+
+                        let newTeacherId = null;
+                        try {
+                            const res = await window.api.call("/teachers/", "POST", teacherPayload);
+                            newTeacherId = res?.id;
+                            if (newTeacherId) countTeacher++;
+                        } catch (err) {
+                            console.error("Lỗi tạo GV " + name, err);
+                            continue;
+                        }
+
+                        // 5. Xử lý Phân công giảng dạy (nếu có giáo viên vừa tạo và chuỗi phân công)
+                        if (newTeacherId && phanCongStr) {
+                            // Tách các nhóm môn: "Toán: 6A, 6B; Văn: 7A" -> ["Toán: 6A, 6B", "Văn: 7A"]
+                            const assignGroups = phanCongStr.split(";");
+                            
+                            for (const group of assignGroups) {
+                                if (!group.includes(":")) continue;
+                                
+                                const [subjName, classListStr] = group.split(":");
+                                const sId = findSubjectId(subjName);
+
+                                if (sId && classListStr) {
+                                    const classNames = classListStr.split(",");
+                                    for (const clsName of classNames) {
+                                        const cId = findClassId(clsName);
+                                        if (cId) {
+                                            // Gọi API tạo phân công
+                                            try {
+                                                await window.api.call("/assignments/", "POST", {
+                                                    session_id: sessionId,
+                                                    class_id: cId,
+                                                    subject_id: sId,
+                                                    teacher_id: newTeacherId,
+                                                    periods_per_week: 2 // Mặc định 2 tiết (hoặc cần logic phức tạp hơn để lấy từ cấu hình Môn)
+                                                });
+                                                countAssign++;
+                                            } catch (assignErr) {
+                                                console.error(`Lỗi phân công ${name} - ${clsName}`, assignErr);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    setIsImporting(false);
+                    alert(`✅ Hoàn tất!\n- Đã nhập: ${countTeacher} giáo viên\n- Đã tạo: ${countAssign} phân công giảng dạy tương ứng.`);
+                    loadData();
+                    e.target.value = null; 
+                });
+            };
+
             return (
                 <window.AppLayout>
                     <div className="flex justify-between items-center mb-6">
@@ -153,6 +260,10 @@
                             <button onClick={() => window.excel.export(teachers, "DS_GiaoVien.xlsx")} className="bg-green-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-700 shadow flex items-center gap-2">
                                 📤 Xuất Excel
                             </button>
+                            <label className={`bg-purple-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-purple-700 cursor-pointer shadow flex items-center gap-2 ${isImporting ? 'opacity-50 cursor-wait' : ''}`}>
+                                {isImporting ? '⏳ Đang xử lý...' : '📥 Import Dữ liệu Đầy đủ'}
+                                <input type="file" onChange={handleImport} hidden accept=".xlsx, .csv" disabled={isImporting}/>
+                            </label>
                         </div>
                     </div>
 
