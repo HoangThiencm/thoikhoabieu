@@ -9,95 +9,137 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script type="text/babel" src="js/common.js"></script>
+    <style>
+        .busy-cell { cursor: pointer; transition: all 0.2s; }
+        .busy-cell:hover { opacity: 0.8; }
+        .busy-cell.active { background-color: #f87171; color: white; font-weight: bold; } /* Màu đỏ nhạt */
+    </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
         function TeacherPage() {
-            const [data, setData] = React.useState([]);
-            const [form, setForm] = React.useState({ name: "", short_name: "", specialization: "" });
+            const [teachers, setTeachers] = React.useState([]);
+            const [subjects, setSubjects] = React.useState([]);
+            // Giả lập danh sách tổ chuyên môn (thực tế nên lấy từ API nếu có bảng groups)
+            const [groups, setGroups] = React.useState(["Toán - Tin", "Văn - Sử - Địa", "KHTN", "Ngoại ngữ", "Nghệ thuật", "GDTC"]);
+            const [roles, setRoles] = React.useState(["Giáo viên", "Tổ trưởng", "Phó hiệu trưởng", "Thỉnh giảng"]);
+
+            const [form, setForm] = React.useState({
+                name: "", short_name: "", email: "", 
+                professional_group_name: "", role: "Giáo viên", target_periods: 19,
+                subjects: [], secondary_subjects: [], 
+                unavailable_periods: [] // Mảng các object {day: 0, period: 1}
+            });
+            
             const [editingId, setEditingId] = React.useState(null);
+            const [showForm, setShowForm] = React.useState(false); // Ẩn/hiện form
 
             // Hàm load dữ liệu
-            const load = async () => {
+            const loadData = async () => {
                 const sessionId = window.api.getSessionId();
-                if (!sessionId) return; // Nếu chưa có session thì Layout đã hiển thị cảnh báo
+                if (!sessionId) return;
                 
-                // --- QUAN TRỌNG: Gửi session_id vào query params ---
-                const res = await window.api.call(`/teachers/?session_id=${sessionId}`);
-                setData(res || []);
+                const [tData, sData] = await Promise.all([
+                    window.api.call(`/teachers/?session_id=${sessionId}`),
+                    window.api.call(`/subjects/?session_id=${sessionId}`) // Cần API lấy môn học
+                ]);
+                
+                setTeachers(tData || []);
+                setSubjects(sData || []);
             };
 
-            React.useEffect(() => { load(); }, []);
+            React.useEffect(() => { loadData(); }, []);
 
             const handleSubmit = async () => {
                 if(!form.name) return alert("Vui lòng nhập tên giáo viên!");
                 
                 const sessionId = window.api.getSessionId();
-                if (!sessionId) return alert("Lỗi: Chưa xác định phiên làm việc (Session ID).");
+                if (!sessionId) return alert("Lỗi: Chưa xác định phiên làm việc.");
 
-                // --- QUAN TRỌNG: Thêm session_id vào body khi tạo mới ---
-                const payload = { ...form, session_id: sessionId };
+                // Chuẩn hóa dữ liệu trước khi gửi
+                const payload = {
+                    ...form,
+                    session_id: sessionId,
+                    // Đảm bảo kiểu dữ liệu đúng với Backend Model
+                    target_periods: parseInt(form.target_periods) || 0,
+                    // Backend nhận unavailable_periods là list object
+                    unavailable_periods: form.unavailable_periods
+                };
                 
                 if (editingId) {
                     await window.api.call(`/teachers/${editingId}`, "PUT", payload);
                     alert("Cập nhật thành công!");
-                    setEditingId(null);
                 } else {
                     await window.api.call("/teachers/", "POST", payload);
+                    alert("Thêm mới thành công!");
                 }
                 
-                setForm({ name: "", short_name: "", specialization: "" });
-                load();
+                resetForm();
+                loadData();
+            };
+
+            const resetForm = () => {
+                setForm({
+                    name: "", short_name: "", email: "", 
+                    professional_group_name: "", role: "Giáo viên", target_periods: 19,
+                    subjects: [], secondary_subjects: [], 
+                    unavailable_periods: []
+                });
+                setEditingId(null);
+                setShowForm(false);
             };
 
             const handleEdit = (item) => {
                 setForm({
                     name: item.name,
                     short_name: item.short_name || "",
-                    specialization: item.specialization || "" // Note: Model mới chưa có specialization, bạn có thể cần thêm trường này vào backend nếu muốn dùng
+                    email: item.email || "",
+                    professional_group_name: item.professional_group_name || "",
+                    role: item.role || "Giáo viên",
+                    target_periods: item.target_periods || 19,
+                    subjects: item.subjects || [], // Backend cần trả về mảng tên môn học
+                    secondary_subjects: item.secondary_subjects || [],
+                    unavailable_periods: item.unavailable_periods || []
                 });
                 setEditingId(item.id);
+                setShowForm(true);
                 window.scrollTo({ top: 0, behavior: 'smooth' });
-            };
-
-            const handleCancel = () => {
-                setForm({ name: "", short_name: "", specialization: "" });
-                setEditingId(null);
             };
 
             const del = async (id) => {
                 if(confirm("Xóa giáo viên này sẽ mất các phân công liên quan. Tiếp tục?")) {
                     await window.api.call(`/teachers/${id}`, "DELETE");
-                    load();
+                    loadData();
                 }
             };
 
-            const handleImport = (e) => {
-                const sessionId = window.api.getSessionId();
-                if (!sessionId) return alert("Chưa chọn Đợt TKB!");
+            // Hàm xử lý chọn môn học (đa chọn)
+            const toggleSubject = (subjName, isSecondary = false) => {
+                const field = isSecondary ? 'secondary_subjects' : 'subjects';
+                const currentList = form[field];
+                if (currentList.includes(subjName)) {
+                    setForm({ ...form, [field]: currentList.filter(s => s !== subjName) });
+                } else {
+                    setForm({ ...form, [field]: [...currentList, subjName] });
+                }
+            };
 
-                window.excel.import(e.target.files[0], async (rows) => {
-                    let count = 0;
-                    for(const r of rows) {
-                        const name = r["Họ tên"] || r["Name"] || r["name"];
-                        const short = r["Tên tắt"] || r["ShortName"] || r["short_name"];
-                        // Tạm thời bỏ qua specialization nếu backend chưa hỗ trợ, hoặc thêm vào model backend
-                        
-                        if(name) {
-                            await window.api.call("/teachers/", "POST", { 
-                                name, 
-                                short_name: short,
-                                session_id: sessionId // Thêm session_id khi import
-                            });
-                            count++;
-                        }
-                    }
-                    alert(`Đã nhập thành công ${count} giáo viên.`);
-                    load();
-                    e.target.value = null; 
-                });
+            // Hàm xử lý chọn lịch bận
+            const toggleBusySlot = (day, period) => {
+                const currentSlots = form.unavailable_periods;
+                const exists = currentSlots.some(s => s.day === day && s.period === period);
+                
+                if (exists) {
+                    setForm({ ...form, unavailable_periods: currentSlots.filter(s => !(s.day === day && s.period === period)) });
+                } else {
+                    setForm({ ...form, unavailable_periods: [...currentSlots, { day, period }] });
+                }
+            };
+
+            const isBusy = (day, period) => {
+                return form.unavailable_periods.some(s => s.day === day && s.period === period);
             };
 
             return (
@@ -105,83 +147,189 @@
                     <div className="flex justify-between items-center mb-6">
                         <h1 className="text-2xl font-bold text-gray-800">Quản lý Giáo viên</h1>
                         <div className="flex gap-2">
-                            <button onClick={() => window.excel.export(data, "DS_GiaoVien.xlsx")} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-green-700 shadow flex items-center gap-2">
+                            <button onClick={() => { resetForm(); setShowForm(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 shadow flex items-center gap-2">
+                                + Thêm Giáo Viên
+                            </button>
+                            <button onClick={() => window.excel.export(teachers, "DS_GiaoVien.xlsx")} className="bg-green-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-700 shadow flex items-center gap-2">
                                 📤 Xuất Excel
                             </button>
-                            <label className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-blue-700 cursor-pointer shadow flex items-center gap-2">
-                                📥 Nhập Excel <input type="file" onChange={handleImport} hidden accept=".xlsx"/>
-                            </label>
                         </div>
                     </div>
 
-                    <div className={`p-6 rounded-xl shadow-sm mb-8 border transition-colors ${editingId ? 'bg-orange-50 border-orange-200' : 'bg-white border-gray-200'}`}>
-                        <div className="flex justify-between items-center mb-4 border-b pb-2">
-                            <h3 className={`font-bold ${editingId ? 'text-orange-700' : 'text-gray-700'}`}>
-                                {editingId ? "✏️ Đang chỉnh sửa thông tin" : "Thêm giáo viên mới"}
-                            </h3>
-                            {editingId && <button onClick={handleCancel} className="text-xs text-gray-500 hover:text-gray-800 underline">Hủy bỏ</button>}
-                        </div>
-                        
-                        <div className="flex flex-col md:flex-row gap-4 items-end">
-                            <div className="flex-1 w-full">
-                                <label className="text-sm font-bold text-gray-600 mb-1 block">Họ và Tên</label>
-                                <input value={form.name} onChange={e=>setForm({...form, name: e.target.value})} className="border border-gray-300 p-2.5 rounded-lg w-full focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Ví dụ: Nguyễn Văn A"/>
+                    {/* FORM NHẬP LIỆU CHI TIẾT */}
+                    {showForm && (
+                        <div className="bg-white p-6 rounded-xl shadow-lg border border-blue-200 mb-8 animate-fade-in-down">
+                            <div className="flex justify-between items-center mb-6 border-b pb-2">
+                                <h3 className="font-bold text-xl text-blue-800">
+                                    {editingId ? "✏️ Chỉnh sửa thông tin" : "✨ Thêm giáo viên mới"}
+                                </h3>
+                                <button onClick={resetForm} className="text-gray-500 hover:text-red-500 font-bold">✕ Đóng</button>
                             </div>
-                            <div className="w-full md:w-1/4">
-                                <label className="text-sm font-bold text-gray-600 mb-1 block">Tên tắt (Mã)</label>
-                                <input value={form.short_name} onChange={e=>setForm({...form, short_name: e.target.value})} className="border border-gray-300 p-2.5 rounded-lg w-full focus:ring-2 focus:ring-blue-500 outline-none" placeholder="GvA"/>
-                            </div>
-                            <div className="w-full md:w-1/4">
-                                <label className="text-sm font-bold text-gray-600 mb-1 block">Chuyên môn</label>
-                                <input value={form.specialization} onChange={e=>setForm({...form, specialization: e.target.value})} className="border border-gray-300 p-2.5 rounded-lg w-full focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Toán, Lý..."/>
-                            </div>
-                            
-                            <div className="flex gap-2 w-full md:w-auto">
-                                {editingId ? (
-                                    <>
-                                        <button onClick={handleCancel} className="bg-gray-500 text-white px-4 py-2.5 rounded-lg font-bold hover:bg-gray-600 shadow transition w-full md:w-auto">
-                                            Hủy
-                                        </button>
-                                        <button onClick={handleSubmit} className="bg-orange-600 text-white px-6 py-2.5 rounded-lg font-bold hover:bg-orange-700 shadow transition w-full md:w-auto">
-                                            Lưu thay đổi
-                                        </button>
-                                    </>
-                                ) : (
-                                    <button onClick={handleSubmit} className="bg-blue-600 text-white px-6 py-2.5 rounded-lg font-bold hover:bg-blue-700 shadow-lg transform active:scale-95 transition w-full md:w-auto">
-                                        + Thêm
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {data.map(item => (
-                            <div key={item.id} className={`bg-white p-5 border rounded-xl shadow-sm hover:shadow-md transition flex justify-between items-start group ${editingId === item.id ? 'ring-2 ring-orange-400' : 'border-gray-200'}`}>
-                                <div>
-                                    <div className="font-bold text-gray-800 text-lg">{item.name}</div>
-                                    <div className="flex items-center gap-2 mt-1">
-                                        <span className="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded font-mono">{item.short_name || "---"}</span>
-                                        {item.specialization && (
-                                            <span className="bg-blue-50 text-blue-600 text-xs px-2 py-1 rounded font-bold">{item.specialization}</span>
-                                        )}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                {/* Cột Trái: Thông tin cơ bản */}
+                                <div className="space-y-4">
+                                    <h4 className="font-bold text-gray-700 border-l-4 border-blue-500 pl-2">1. Thông tin cá nhân</h4>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="col-span-2">
+                                            <label className="text-sm font-semibold block mb-1">Họ và Tên (*)</label>
+                                            <input value={form.name} onChange={e=>setForm({...form, name: e.target.value})} className="border p-2 rounded w-full focus:ring-2 focus:ring-blue-300 outline-none" placeholder="Nguyễn Văn A"/>
+                                        </div>
+                                        <div>
+                                            <label className="text-sm font-semibold block mb-1">Mã GV / Tên tắt</label>
+                                            <input value={form.short_name} onChange={e=>setForm({...form, short_name: e.target.value})} className="border p-2 rounded w-full" placeholder="GVA"/>
+                                        </div>
+                                        <div>
+                                            <label className="text-sm font-semibold block mb-1">Email</label>
+                                            <input value={form.email} onChange={e=>setForm({...form, email: e.target.value})} className="border p-2 rounded w-full" placeholder="email@example.com"/>
+                                        </div>
+                                        <div>
+                                            <label className="text-sm font-semibold block mb-1">Tổ Chuyên Môn</label>
+                                            <select value={form.professional_group_name} onChange={e=>setForm({...form, professional_group_name: e.target.value})} className="border p-2 rounded w-full">
+                                                <option value="">-- Chọn Tổ --</option>
+                                                {groups.map(g => <option key={g} value={g}>{g}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="text-sm font-semibold block mb-1">Vai trò</label>
+                                            <select value={form.role} onChange={e=>setForm({...form, role: e.target.value})} className="border p-2 rounded w-full">
+                                                {roles.map(r => <option key={r} value={r}>{r}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="col-span-2">
+                                            <label className="text-sm font-semibold block mb-1">Số tiết định mức / tuần</label>
+                                            <input type="number" value={form.target_periods} onChange={e=>setForm({...form, target_periods: e.target.value})} className="border p-2 rounded w-full" />
+                                            <p className="text-xs text-gray-500 mt-1">Số tiết chuẩn giáo viên cần dạy.</p>
+                                        </div>
+                                    </div>
+
+                                    <h4 className="font-bold text-gray-700 border-l-4 border-green-500 pl-2 mt-6">2. Chuyên môn giảng dạy</h4>
+                                    <div className="bg-gray-50 p-3 rounded border">
+                                        <div className="mb-2 font-semibold text-sm">Môn chính (Có thể chọn nhiều):</div>
+                                        <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                                            {subjects.map(s => (
+                                                <label key={s.id} className={`cursor-pointer px-2 py-1 rounded text-xs border ${form.subjects.includes(s.name) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600'}`}>
+                                                    <input type="checkbox" hidden checked={form.subjects.includes(s.name)} onChange={() => toggleSubject(s.name, false)} />
+                                                    {s.name}
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="bg-gray-50 p-3 rounded border mt-2">
+                                        <div className="mb-2 font-semibold text-sm">Môn kiêm nhiệm (Dạy thêm):</div>
+                                        <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                                            {subjects.map(s => (
+                                                <label key={s.id} className={`cursor-pointer px-2 py-1 rounded text-xs border ${form.secondary_subjects.includes(s.name) ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-600'}`}>
+                                                    <input type="checkbox" hidden checked={form.secondary_subjects.includes(s.name)} onChange={() => toggleSubject(s.name, true)} />
+                                                    {s.name}
+                                                </label>
+                                            ))}
+                                        </div>
                                     </div>
                                 </div>
-                                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button onClick={() => handleEdit(item)} className="text-gray-400 hover:text-blue-600 p-2 rounded-full hover:bg-blue-50" title="Chỉnh sửa">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                                    </button>
-                                    <button onClick={()=>del(item.id)} className="text-gray-400 hover:text-red-500 p-2 rounded-full hover:bg-red-50" title="Xóa">
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-                                    </button>
+
+                                {/* Cột Phải: Lịch bận */}
+                                <div>
+                                    <h4 className="font-bold text-gray-700 border-l-4 border-red-500 pl-2 mb-4">3. Đăng ký Lịch bận (Click để chọn)</h4>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-center border-collapse text-sm">
+                                            <thead>
+                                                <tr>
+                                                    <th className="border p-1 bg-gray-100 w-10">Tiết</th>
+                                                    {["Hai","Ba","Tư","Năm","Sáu","Bảy"].map((d, i) => <th key={i} className="border p-1 bg-gray-100">T{i+2}</th>)}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {/* Buổi sáng: Tiết 0-4 */}
+                                                <tr className="bg-blue-50"><td colSpan="7" className="font-bold text-xs py-1 text-blue-700 text-left pl-2">BUỔI SÁNG</td></tr>
+                                                {[0,1,2,3,4].map(period => (
+                                                    <tr key={period}>
+                                                        <td className="border font-bold text-gray-500">{period+1}</td>
+                                                        {[0,1,2,3,4,5].map(day => (
+                                                            <td key={day} 
+                                                                onClick={() => toggleBusySlot(day, period)}
+                                                                className={`border p-1 h-8 busy-cell ${isBusy(day, period) ? 'active' : ''}`}>
+                                                                {isBusy(day, period) ? "BẬN" : ""}
+                                                            </td>
+                                                        ))}
+                                                    </tr>
+                                                ))}
+                                                
+                                                {/* Buổi chiều: Tiết 5-9 */}
+                                                <tr className="bg-orange-50"><td colSpan="7" className="font-bold text-xs py-1 text-orange-700 text-left pl-2">BUỔI CHIỀU</td></tr>
+                                                {[5,6,7,8,9].map(period => (
+                                                    <tr key={period}>
+                                                        <td className="border font-bold text-gray-500">{period-4}</td>
+                                                        {[0,1,2,3,4,5].map(day => (
+                                                            <td key={day} 
+                                                                onClick={() => toggleBusySlot(day, period)}
+                                                                className={`border p-1 h-8 busy-cell ${isBusy(day, period) ? 'active' : ''}`}>
+                                                                {isBusy(day, period) ? "BẬN" : ""}
+                                                            </td>
+                                                        ))}
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <div className="mt-4 flex justify-end gap-3">
+                                        <button onClick={resetForm} className="px-4 py-2 rounded border hover:bg-gray-100">Hủy bỏ</button>
+                                        <button onClick={handleSubmit} className="bg-blue-600 text-white px-6 py-2 rounded font-bold hover:bg-blue-700 shadow">
+                                            💾 Lưu Giáo Viên
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* DANH SÁCH GIÁO VIÊN */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {teachers.map(item => (
+                            <div key={item.id} className="bg-white p-4 border rounded-xl shadow-sm hover:shadow-md transition group relative overflow-hidden">
+                                <div className="absolute top-0 right-0 p-2 opacity-0 group-hover:opacity-100 transition bg-white/90 rounded-bl-xl border-l border-b">
+                                    <button onClick={() => handleEdit(item)} className="text-blue-600 mr-2 hover:underline">Sửa</button>
+                                    <button onClick={() => del(item.id)} className="text-red-500 hover:underline">Xóa</button>
+                                </div>
+                                
+                                <div className="flex items-start gap-3">
+                                    <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center font-bold text-gray-600 text-lg">
+                                        {item.name.charAt(0)}
+                                    </div>
+                                    <div>
+                                        <div className="font-bold text-gray-800 text-lg leading-tight">{item.name}</div>
+                                        <div className="text-xs text-gray-500 mt-1 flex items-center gap-2">
+                                            <span className="bg-gray-100 px-1.5 py-0.5 rounded border">{item.short_name || "---"}</span>
+                                            <span>{item.email}</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="mt-3 pt-3 border-t border-dashed space-y-1 text-sm">
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-500">Tổ CM:</span>
+                                        <span className="font-medium">{item.professional_group_name || "---"}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-500">Định mức:</span>
+                                        <span className="font-bold text-blue-600">{item.target_periods} tiết</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-gray-500 block mb-1">Chuyên môn:</span>
+                                        <div className="flex flex-wrap gap-1">
+                                            {item.subjects && item.subjects.length > 0 ? (
+                                                item.subjects.map(s => <span key={s} className="bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded text-xs border border-blue-100">{s}</span>)
+                                            ) : <span className="text-gray-400 italic text-xs">Chưa cập nhật</span>}
+                                        </div>
+                                    </div>
+                                    {item.unavailable_periods && item.unavailable_periods.length > 0 && (
+                                        <div className="mt-2 text-xs text-red-500">
+                                            🔒 Đã đăng ký {item.unavailable_periods.length} tiết bận
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         ))}
-                        {data.length === 0 && (
-                            <div className="col-span-full text-center py-10 text-gray-400 bg-gray-50 rounded-xl border border-dashed">
-                                Chưa có dữ liệu giáo viên. Hãy thêm mới hoặc nhập từ Excel.
-                            </div>
-                        )}
                     </div>
                 </window.AppLayout>
             );
