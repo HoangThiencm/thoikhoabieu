@@ -20,7 +20,7 @@
 
             const load = async () => {
                 const sid = window.api.getSessionId();
-                if(!sid) return; // Chưa chọn đợt thì không tải
+                if(!sid) return; 
                 setData(await window.api.call(`/subjects/?session_id=${sid}`) || []);
             };
             React.useEffect(() => { load(); }, []);
