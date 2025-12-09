@@ -18,12 +18,23 @@
             const [data, setData] = React.useState([]);
             const [form, setForm] = React.useState({ name: "", grade: "6" });
 
-            const load = async () => setData(await window.api.call("/classes/") || []);
+            const load = async () => {
+                const sid = window.api.getSessionId();
+                if(!sid) return;
+                setData(await window.api.call(`/classes/?session_id=${sid}`) || []);
+            };
             React.useEffect(() => { load(); }, []);
 
             const add = async () => {
+                const sid = window.api.getSessionId();
+                if(!sid) return alert("Chưa chọn Đợt TKB!");
                 if(!form.name) return alert("Nhập tên lớp!");
-                await window.api.call("/classes/", "POST", { name: form.name, grade: parseInt(form.grade) });
+                
+                await window.api.call("/classes/", "POST", { 
+                    name: form.name, 
+                    grade: parseInt(form.grade),
+                    session_id: sid
+                });
                 setForm({ ...form, name: "" });
                 load();
             };
@@ -36,13 +47,20 @@
             };
 
             const handleImport = (e) => {
+                const sid = window.api.getSessionId();
+                if(!sid) return alert("Chưa chọn Đợt TKB!");
+
                 window.excel.import(e.target.files[0], async (rows) => {
                     let count = 0;
                     for(const r of rows) {
                         const name = r["Tên lớp"] || r["Name"] || r["name"];
                         const grade = r["Khối"] || r["Grade"] || r["grade"] || 6;
                         if(name) {
-                            await window.api.call("/classes/", "POST", { name, grade: parseInt(grade) });
+                            await window.api.call("/classes/", "POST", { 
+                                name, 
+                                grade: parseInt(grade),
+                                session_id: sid 
+                            });
                             count++;
                         }
                     }
