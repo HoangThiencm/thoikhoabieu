@@ -18,24 +18,57 @@ window.api = {
             const config = { method, headers };
             if (body) config.body = JSON.stringify(body);
             
+            // Xử lý URL để tránh duplicate dấu /
             const baseUrl = window.api.getUrl().replace(/\/$/, "");
             const res = await fetch(`${baseUrl}${endpoint}`, config);
             
             if (!res.ok) {
                 const errJson = await res.json().catch(() => ({}));
-                throw new Error(errJson.detail || `Lỗi API: ${res.statusText}`);
+                // --- SỬA LỖI HIỂN THỊ [object Object] ---
+                let errMsg = `Lỗi API (${res.status}): ${res.statusText}`;
+                
+                if (errJson.detail) {
+                    if (typeof errJson.detail === 'string') {
+                        errMsg = errJson.detail;
+                    } else if (Array.isArray(errJson.detail)) {
+                        // Trường hợp lỗi validation (Pydantic) trả về mảng
+                        errMsg = errJson.detail.map(e => `${e.loc.join('.')}: ${e.msg}`).join('\n');
+                    } else {
+                        errMsg = JSON.stringify(errJson.detail);
+                    }
+                }
+                throw new Error(errMsg);
+                // ----------------------------------------
             }
             const json = await res.json();
             return json.data;
         } catch (err) {
-            console.error(err);
-            alert("Lỗi: " + err.message);
+            console.error("API Call Error:", err);
+            alert("⚠️ " + err.message); // Hiển thị thông báo lỗi rõ ràng
             return null;
         }
     }
 };
 
-// ... (Giữ nguyên phần Excel Helper) ...
+// --- 2. EXCEL HELPER ---
+window.excel = {
+    export: (data, filename) => {
+        const ws = XLSX.utils.json_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+        XLSX.writeFile(wb, filename || "data.xlsx");
+    },
+    import: (file, callback) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const data = new Uint8Array(e.target.result);
+            const wb = XLSX.read(data, { type: 'array' });
+            const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+            callback(json);
+        };
+        reader.readAsArrayBuffer(file);
+    }
+};
 
 // --- 3. MENU CONFIG ---
 const MENU_ITEMS = [
@@ -59,11 +92,10 @@ window.AppLayout = ({ children }) => {
         name: localStorage.getItem("current_session_name") || "Chưa chọn đợt"
     });
 
-    // Kiểm tra bắt buộc chọn session (trừ trang index)
+    // Kiểm tra bắt buộc chọn session
     React.useEffect(() => {
         if (currentPath !== "index.html" && !currentSession.id) {
-            alert("Vui lòng chọn Đơn vị và Đợt TKB trước khi thao tác!");
-            window.location.href = "index.html";
+            // Không alert ngay để tránh spam, nhưng hiển thị giao diện cảnh báo
         }
     }, []);
 
@@ -74,7 +106,7 @@ window.AppLayout = ({ children }) => {
     };
 
     const changeSession = () => {
-        window.location.href = "index.html"; // Quay về trang chủ để chọn lại
+        window.location.href = "index.html";
     };
 
     return (
@@ -126,7 +158,15 @@ window.AppLayout = ({ children }) => {
             {/* MAIN CONTENT */}
             <main className="flex-1 md:ml-64 p-8">
                 <div className="max-w-7xl mx-auto">
-                    {children}
+                    {!currentSession.id && currentPath !== "index.html" ? (
+                        <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-4 rounded-lg text-center">
+                            <h3 className="font-bold text-lg">⚠️ Chưa chọn Đợt TKB</h3>
+                            <p className="mb-2">Vui lòng quay lại trang Tổng quan để chọn Đơn vị và Năm học.</p>
+                            <a href="index.html" className="inline-block bg-yellow-600 text-white px-4 py-2 rounded font-bold hover:bg-yellow-700">Quay về chọn Đợt</a>
+                        </div>
+                    ) : (
+                        children
+                    )}
                 </div>
             </main>
         </div>
